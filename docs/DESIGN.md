@@ -28,11 +28,11 @@
 
 ## Activity
 
-Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Selectable row → reveal in Finder. Context menu: Reveal / Copy path. Persists across launches with a cap.
+Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Double-click or Reveal in Finder (toolbar or context menu) opens the file; selection alone does not. Context menu: Reveal / Copy path. Persists across launches with a cap.
 
 ## Cleanup
 
-Queue of candidates with age, size, path. Primary: File Away. Secondary: Keep (snooze). Destructive: Delete (confirm with filename). After actions, prune empty Intake-managed folders.
+Queue of candidates with age, size, path. Primary: File Away. Secondary: Keep (snooze). Destructive: Delete (confirm with filename; Intake moves it to Trash). After actions, prune empty Intake-managed folders.
 
 ## Tokens (product layer)
 

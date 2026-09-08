@@ -19,7 +19,7 @@ People on macOS who download constantly and want the folder to stay navigable wi
 
 ## Findability
 
-Users discover Intake from the **Dock** (on by default) and the **menu bar** (on by default, soft-catch template icon). First-run shows a one-time tip: Intake lives in the menu bar. Show in Dock / Show in menu bar can each be turned off, but **not both** — there must always be an icon that reopens Settings.
+Users discover Intake from the **Dock** (on by default) and the **menu bar** (on by default, soft-catch template icon). First-run shows a one-time tip: Intake lives in the Dock and the menu bar. Show in Dock / Show in menu bar can each be turned off, but **not both** — there must always be an icon that reopens Settings.
 
 Pause is always one click away. Delete is never silent. AI is never on by default.
 
@@ -48,12 +48,12 @@ Users can edit rules later. Folder names are localizable later; English defaults
 4. Log to Activity.
 
 ### Activity
-Chronological **audit trail** of rename / move / skip / error (plus cleanup delete and empty-folder removal). It is not the Cleanup queue. Rows persist across launches. Select a row to Reveal in Finder.
+Chronological **audit trail** of rename / move / skip / error (plus cleanup delete and empty-folder removal). It is not the Cleanup queue. Rows persist across launches. Double-click a row, or use Reveal in Finder (toolbar or context menu) to open it in Finder. Context menu also copies the path. Selecting a row does not reveal it.
 
 ### Cleanup
 1. Scan Intake-managed paths (and optionally loose files still in watch root).
 2. Files not opened/modified for *N* days appear in Cleanup — a **decision queue**, never merged with Activity.
-3. Actions: **File Away** (pick folder), **Delete** (confirm), **Keep** (snooze / exclude).
+3. Actions: **File Away** (pick folder), **Delete** (confirm; Intake moves it to Trash), **Keep** (snooze / exclude).
 4. After moves/deletes, remove empty Intake-created category folders.
 
 ### AI (phase 2)

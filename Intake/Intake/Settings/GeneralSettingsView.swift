@@ -48,33 +48,25 @@ struct GeneralSettingsView: View {
                     set: { model.setLaunchAtLogin($0) }
                 ))
             }
-            Section("Appearance in macOS") {
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle(
-                        "Show in Dock",
-                        isOn: Binding(
-                            get: { model.showsInDock },
-                            set: { model.setShowsInDock($0) }
-                        )
+            Section {
+                Toggle(
+                    "Show in Dock",
+                    isOn: Binding(
+                        get: { model.showsInDock },
+                        set: { model.setShowsInDock($0) }
                     )
-                    .help("Keep Intake in the Dock so it’s easy to open Settings, Activity, and Cleanup.")
-                    Text("Keep Intake in the Dock so it’s easy to open Settings, Activity, and Cleanup.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle(
-                        "Show in menu bar",
-                        isOn: Binding(
-                            get: { model.showsInMenuBar },
-                            set: { model.setShowsInMenuBar($0) }
-                        )
+                )
+                Toggle(
+                    "Show in menu bar",
+                    isOn: Binding(
+                        get: { model.showsInMenuBar },
+                        set: { model.setShowsInMenuBar($0) }
                     )
-                    .help("Status and pause/resume without opening a window.")
-                    Text("Status and pause/resume without opening a window.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                )
+            } header: {
+                Text("Appearance in macOS")
+            } footer: {
+                Text("Keep Intake in the Dock so it’s easy to open Settings, Activity, and Cleanup. The menu bar shows status and pause/resume without opening a window.")
             }
         }
         .formStyle(.grouped)

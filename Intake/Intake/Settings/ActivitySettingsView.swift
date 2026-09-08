@@ -20,6 +20,12 @@ struct ActivitySettingsView: View {
                         ForEach(model.activity) { entry in
                             ActivityRow(entry: entry)
                                 .tag(entry.id)
+                                .simultaneousGesture(
+                                    TapGesture(count: 2).onEnded {
+                                        selection = entry.id
+                                        model.reveal(entry.url)
+                                    }
+                                )
                                 .contextMenu {
                                     Button("Reveal in Finder") {
                                         model.reveal(entry.url)
@@ -30,6 +36,9 @@ struct ActivitySettingsView: View {
                                     }
                                     .disabled(entry.url == nil)
                                 }
+                                .accessibilityAction(named: "Reveal in Finder") {
+                                    model.reveal(entry.url)
+                                }
                         }
                     }
                     .frame(minHeight: 280)
@@ -37,20 +46,29 @@ struct ActivitySettingsView: View {
                 }
             } footer: {
                 if !model.activity.isEmpty {
-                    Text("Select a row to reveal it in Finder.")
+                    Text("Double-click a row to reveal it in Finder, or use Reveal in Finder.")
                 }
             }
         }
         .formStyle(.grouped)
         .padding()
-        .onChange(of: selection) { _, newValue in
-            guard let newValue,
-                  let entry = model.activity.first(where: { $0.id == newValue })
-            else {
-                return
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Reveal in Finder") {
+                    revealSelection()
+                }
+                .disabled(selectedEntry?.url == nil)
             }
-            model.reveal(entry.url)
         }
+    }
+
+    private var selectedEntry: ActivityEntry? {
+        guard let selection else { return nil }
+        return model.activity.first { $0.id == selection }
+    }
+
+    private func revealSelection() {
+        model.reveal(selectedEntry?.url)
     }
 }
 

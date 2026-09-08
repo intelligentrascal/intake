@@ -102,7 +102,7 @@ private struct CleanupQueueTable: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This cannot be undone from Intake.")
+            Text("Intake moves it to Trash.")
         }
     }
 
