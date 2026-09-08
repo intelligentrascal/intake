@@ -56,6 +56,15 @@ final class AppModel {
 
     var showFirstRunTip = false
     var keepOneSurfaceAlert = false
+    var activityWindowRequestID: UInt64 = 0
+    var organizeConfirmPresented = false
+    var organizeNothingPresented = false
+    var organizeProgressPresented = false
+    var organizeDonePresented = false
+    var organizeEligibleTotal = 0
+    var organizeProcessedCount = 0
+    var organizeSummary: OrganizeExistingSummary?
+    var isOrganizingExisting = false
     var snoozedUntil: [String: Date] {
         didSet { persistSnooze() }
     }
@@ -95,6 +104,14 @@ final class AppModel {
     private var accessingWatchFolder = false
     @ObservationIgnored
     private var arrivedWhilePaused: [URL] = []
+    @ObservationIgnored
+    private var arrivedDuringOrganize: [URL] = []
+    @ObservationIgnored
+    private var pendingOrganizeScan: OrganizeExistingScan?
+    @ObservationIgnored
+    private var organizeCancelRequested = false
+    @ObservationIgnored
+    private var organizeTask: Task<Void, Never>?
 
     init() {
         let defaults = UserDefaults.standard
@@ -122,10 +139,15 @@ final class AppModel {
     func applicationDidFinishLaunching() {
         applyActivationPolicy()
         scanCleanupCandidates()
-        if !UserDefaults.standard.bool(forKey: SettingsKey.didShowMenuBarTip) {
+        let firstRun = !UserDefaults.standard.bool(forKey: SettingsKey.didShowMenuBarTip)
+        if firstRun {
             showFirstRunTip = true
-            Task { @MainActor in
+        }
+        Task { @MainActor in
+            if self.showsInDock || firstRun {
                 self.bringPrimaryWindowForward()
+            } else {
+                NSApp.windows.filter(\.isIntakeActivityWindow).forEach { $0.orderOut(nil) }
             }
         }
     }
@@ -168,13 +190,151 @@ final class AppModel {
     }
 
     func bringPrimaryWindowForward() {
+        openActivity()
+    }
+
+    func openActivity() {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        if let window = existingActivityWindow() {
+            closeDuplicateActivityWindows(keeping: window)
+            front(window)
+            return
+        }
+        activityWindowRequestID += 1
+        NotificationCenter.default.post(name: .intakeOpenActivity, object: nil)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            if let window = self.existingActivityWindow() {
+                self.closeDuplicateActivityWindows(keeping: window)
+                self.front(window)
+                return
+            }
+            ActivityWindowFallback.shared.present(model: self)
+        }
     }
 
     func openSettings(pane: SettingsPane) {
         selectedSettingsPane = pane
-        bringPrimaryWindowForward()
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
+    var organizeConfirmTitle: String {
+        OrganizeExistingCopy.confirmTitle(folderName: watchFolder.lastPathComponent)
+    }
+
+    var organizeConfirmMessage: String {
+        if isPaused {
+            return OrganizeExistingCopy.confirmBody + "\n\n" + OrganizeExistingCopy.pausedOneShotNote
+        }
+        return OrganizeExistingCopy.confirmBody
+    }
+
+    func requestOrganizeExisting() {
+        if isOrganizingExisting {
+            organizeProgressPresented = true
+            openActivity()
+            return
+        }
+        let scan = OrganizeExistingScanner(watchFolder: watchFolder).scan()
+        pendingOrganizeScan = scan
+        openActivity()
+        if scan.eligible.isEmpty {
+            organizeNothingPresented = true
+            return
+        }
+        organizeConfirmPresented = true
+    }
+
+    func confirmOrganizeExisting() {
+        organizeConfirmPresented = false
+        guard let scan = pendingOrganizeScan else { return }
+        startOrganizeExisting(scan)
+    }
+
+    func cancelOrganizeExisting() {
+        organizeCancelRequested = true
+        organizeTask?.cancel()
+    }
+
+    private func startOrganizeExisting(_ scan: OrganizeExistingScan) {
+        organizeCancelRequested = false
+        isOrganizingExisting = true
+        organizeEligibleTotal = scan.eligible.count
+        organizeProcessedCount = 0
+        organizeProgressPresented = true
+        let processor = OrganizeExistingProcessor(watchFolder: watchFolder, rules: rules)
+        let skippedURLs = scan.skipped
+        let files = scan.eligible
+
+        organizeTask = Task { @MainActor in
+            for url in skippedURLs where !url.lastPathComponent.hasPrefix(".") {
+                self.record(
+                    ActivityEntry(
+                        kind: .skipped,
+                        detail: "Skipped \(url.lastPathComponent)",
+                        url: url,
+                        fileName: url.lastPathComponent
+                    )
+                )
+            }
+
+            var organized = 0
+            var skipped = skippedURLs.count
+            var errors = 0
+
+            for (index, url) in files.enumerated() {
+                if Task.isCancelled || self.organizeCancelRequested {
+                    break
+                }
+                self.arrivedWhilePaused.removeAll {
+                    $0.standardizedFileURL == url.standardizedFileURL
+                }
+                switch processor.processOne(url) {
+                case .organized(let entries):
+                    organized += 1
+                    entries.reversed().forEach(self.record)
+                case .skipped(let entry):
+                    skipped += 1
+                    self.record(entry)
+                case .error(let entry):
+                    errors += 1
+                    self.record(entry)
+                case .notInWatchRoot:
+                    skipped += 1
+                }
+                self.organizeProcessedCount = index + 1
+            }
+
+            self.organizeSummary = OrganizeExistingSummary(
+                organized: organized,
+                skipped: skipped,
+                errors: errors,
+                cancelled: Task.isCancelled || self.organizeCancelRequested
+            )
+            self.isOrganizingExisting = false
+            self.organizeProgressPresented = false
+            self.organizeDonePresented = true
+            self.scanCleanupCandidates()
+            self.flushArrivedDuringOrganize()
+        }
+    }
+
+    private func existingActivityWindow() -> NSWindow? {
+        NSApp.windows.first(where: \.isIntakeActivityWindow)
+    }
+
+    private func closeDuplicateActivityWindows(keeping keeper: NSWindow) {
+        for window in NSApp.windows where window.isIntakeActivityWindow && window !== keeper {
+            window.close()
+        }
+    }
+
+    private func front(_ window: NSWindow) {
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        window.makeKeyAndOrderFront(nil)
     }
 
     func acknowledgeFirstRunTip() {
@@ -241,41 +401,36 @@ final class AppModel {
     }
 
     func handleStableFile(_ url: URL) {
+        if isOrganizingExisting {
+            arrivedDuringOrganize.append(url)
+            return
+        }
         if isPaused {
             arrivedWhilePaused.append(url)
             return
         }
-        let policy = DownloadIgnorePolicy()
-        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-        if policy.shouldIgnore(url: url, kind: .appeared, isDirectory: isDirectory) {
-            record(
-                ActivityEntry(
-                    kind: .skipped,
-                    detail: "Skipped \(url.lastPathComponent)",
-                    url: url,
-                    fileName: url.lastPathComponent
-                )
-            )
-            return
-        }
+        applyIngest(url)
+    }
 
-        let pipeline = IngestPipeline(watchFolder: watchFolder, rules: rules)
-        let existing = existingNames(in: pipeline.plan(for: url)?.destinationDirectory)
-        guard let plan = pipeline.plan(for: url, existingNamesInDestination: existing) else {
-            return
-        }
-        do {
-            let entries = try pipeline.apply(plan)
+    private func applyIngest(_ url: URL) {
+        let processor = OrganizeExistingProcessor(watchFolder: watchFolder, rules: rules)
+        switch processor.processOne(url) {
+        case .organized(let entries):
             entries.reversed().forEach(record)
-        } catch {
-            record(
-                ActivityEntry(
-                    kind: .error,
-                    detail: "Could not file \(url.lastPathComponent): \(error.localizedDescription)",
-                    url: url,
-                    fileName: url.lastPathComponent
-                )
-            )
+        case .skipped(let entry):
+            record(entry)
+        case .error(let entry):
+            record(entry)
+        case .notInWatchRoot:
+            break
+        }
+    }
+
+    private func flushArrivedDuringOrganize() {
+        let pending = arrivedDuringOrganize
+        arrivedDuringOrganize.removeAll()
+        for url in pending {
+            handleStableFile(url)
         }
     }
 
@@ -381,12 +536,6 @@ final class AppModel {
     private func persistSnooze() {
         let raw = snoozedUntil.mapValues(\.timeIntervalSince1970)
         UserDefaults.standard.set(raw, forKey: SettingsKey.cleanupSnooze)
-    }
-
-    private func existingNames(in directory: URL?) -> Set<String> {
-        guard let directory else { return [] }
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-        return Set(names)
     }
 
     private func persistWatchFolderBookmark() {

@@ -10,6 +10,9 @@ struct MenuBarLabel: View {
             .accessibilityLabel(model.menuBarAccessibilityLabel)
     }
 
+    /// Dense 16pt template glyphs (Watching vs Paused). `MenuBarExtra` follows the
+    /// system menu bar; macOS has no supported API to pin extras to the primary
+    /// display only (no Thaw-style multi-bar manager).
     private var templateIcon: NSImage {
         let name = model.isPaused ? "MenuBarIconPaused" : "MenuBarIconWatching"
         let image = NSImage(named: name) ?? NSImage(size: NSSize(width: 16, height: 16))
@@ -29,6 +32,10 @@ struct MenuBarContentView: View {
         Button(model.isPaused ? "Resume Organizing" : "Pause Organizing") {
             model.togglePaused()
         }
+        Button(OrganizeExistingCopy.menuTitle) {
+            model.requestOrganizeExisting()
+        }
+        .disabled(model.isOrganizingExisting || model.watchFolderBookmarkLost)
         if !model.recentActivity.isEmpty {
             Divider()
             ForEach(model.recentActivity) { entry in
@@ -38,18 +45,16 @@ struct MenuBarContentView: View {
             }
         }
         Divider()
+        Button("Open Activity") {
+            model.openActivity()
+        }
+        Button("Open Cleanup") {
+            model.openSettings(pane: .cleanup)
+        }
         SettingsLink {
             Text("Settings…")
         }
         .keyboardShortcut(",")
-        if model.showsInDock {
-            Button("Open Activity") {
-                model.openSettings(pane: .activity)
-            }
-            Button("Open Cleanup") {
-                model.openSettings(pane: .cleanup)
-            }
-        }
         Divider()
         Button("Quit Intake") {
             NSApplication.shared.terminate(nil)

@@ -9,9 +9,9 @@
 
 ## Chrome
 
-- Dock **on** by default (app icon: soft-catch document in a U cradle). Users may hide it; menu bar can remain.
-- `MenuBarExtra` **on** by default for status + quick pause/resume, using a monochrome **template** soft-catch glyph (`isTemplate = true`). Watching vs Paused are distinct silhouettes.
-- `Settings` scene with `NavigationSplitView` sidebar
+- Dock **on** by default (app icon: soft-catch document in a U cradle). Users may hide it; menu bar can remain. Dock click / launch / reopen bring a real **Activity** `Window` forward — not Settings.
+- `MenuBarExtra` **on** by default for status + quick pause/resume, using a monochrome **template** soft-catch glyph (`isTemplate = true`). Watching vs Paused are distinct dense 16pt silhouettes (thick cradle; Paused uses two pause bars).
+- `Settings` scene with `NavigationSplitView` sidebar (⌘, / Settings…)
 - Prefer system `Form` / `List` / `Table` / `Inspector`, grouped form style, section footers
 - SF Symbols for chrome icons; custom app + menu-bar icons only
 - Respect light/dark, accent color, Dynamic Type, Reduce Motion
@@ -19,7 +19,7 @@
 
 ## Settings IA (v1)
 
-1. General — watch folder, launch at login, pause, appearance in macOS (Dock / menu bar)
+1. General — watch folder, organize existing, launch at login, pause, appearance in macOS (Dock / menu bar)
 2. Rules — taxonomy + rename patterns
 3. Cleanup — duration threshold, include roots, decision queue
 4. Activity — audit trail of ingest and cleanup
@@ -28,7 +28,7 @@
 
 ## Activity
 
-Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Double-click or Reveal in Finder (toolbar or context menu) opens the file; selection alone does not. Context menu: Reveal / Copy path. Persists across launches with a cap.
+Primary SwiftUI `Window("Activity", id: "activity")`. Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Empty: ContentUnavailableView “No activity yet”. Double-click or Reveal in Finder (toolbar or context menu) opens the file; selection alone does not. Context menu: Reveal / Copy path. Persists across launches with a cap. Settings remains a secondary scene.
 
 ## Cleanup
 

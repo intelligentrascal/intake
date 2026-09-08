@@ -40,22 +40,12 @@ struct SettingsRootView: View {
         .navigationSplitViewStyle(.balanced)
         .animation(reduceMotion ? nil : .default, value: model.selectedSettingsPane)
         .alert(
-            "Intake lives in the Dock and menu bar",
-            isPresented: $model.showFirstRunTip
-        ) {
-            Button("OK") {
-                model.acknowledgeFirstRunTip()
-            }
-        } message: {
-            Text("Look for the soft-catch icon in the Dock and near Control Center.")
-        }
-        .alert(
             "Keep one way to open Intake",
             isPresented: $model.keepOneSurfaceAlert
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Turn off Dock or the menu bar, not both — otherwise there’s no icon to reopen Settings.")
+            Text("Turn off Dock or the menu bar, not both — otherwise there’s no icon to reopen Intake.")
         }
     }
 }

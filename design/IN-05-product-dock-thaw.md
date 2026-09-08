@@ -52,8 +52,8 @@ Place under **General** (DESIGN IA item 1), after watch folder / launch at login
 Optional footnote if relaunch required: “Changing Dock visibility may need a quick relaunch.”
 
 ### Menu bar extra behavior when Dock is on
-- Menu bar shows status (Watching / Paused / Needs attention) + Pause/Resume + Open Settings / Open Activity / Open Cleanup / Quit.
-- Clicking the Dock icon opens the last-used primary window (prefer **Activity** if watching is healthy; **Cleanup** if there are pending candidates — product polish later; v1: open **Settings → General** or a simple Home if one exists).
+- Menu bar shows status (Watching / Paused / Needs attention) + Pause/Resume + Organize Existing… + Open Activity + Open Cleanup + Settings… + Quit.
+- Clicking the Dock icon opens the **Activity** window (IN-08). Settings remains ⌘, / **Settings…**.
 
 ---
 
