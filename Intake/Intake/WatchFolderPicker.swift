@@ -3,7 +3,7 @@ import AppKit
 enum WatchFolderPicker {
     @MainActor
     static func present(startingAt directory: URL) -> URL? {
-        present(
+        presentOpenPanel(
             startingAt: directory,
             prompt: "Choose",
             message: "Choose the folder Intake should watch."
@@ -14,7 +14,7 @@ enum WatchFolderPicker {
 enum DestinationFolderPicker {
     @MainActor
     static func present(startingAt directory: URL) -> URL? {
-        present(
+        presentOpenPanel(
             startingAt: directory,
             prompt: "File Away",
             message: "Choose a folder to file this item into."
@@ -23,7 +23,7 @@ enum DestinationFolderPicker {
 }
 
 @MainActor
-private func present(startingAt directory: URL, prompt: String, message: String) -> URL? {
+private func presentOpenPanel(startingAt directory: URL, prompt: String, message: String) -> URL? {
     let panel = NSOpenPanel()
     panel.canChooseFiles = false
     panel.canChooseDirectories = true
