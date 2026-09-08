@@ -272,7 +272,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Intake;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Intake watches this folder to rename new downloads and file them into typed folders.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Rahil Jivani";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -309,7 +308,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Intake;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Intake watches this folder to rename new downloads and file them into typed folders.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Rahil Jivani";
 				LD_RUNPATH_SEARCH_PATHS = (

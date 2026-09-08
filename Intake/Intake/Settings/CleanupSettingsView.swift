@@ -7,7 +7,7 @@ struct CleanupSettingsView: View {
     var body: some View {
         @Bindable var model = model
         Form {
-            Section("Threshold") {
+            Section {
                 Stepper(value: $model.cleanupThresholdDays, in: 1...365) {
                     Text("Unused for \(model.cleanupThresholdDays) days")
                 }
@@ -15,22 +15,31 @@ struct CleanupSettingsView: View {
                     "Include loose files still in the watch folder",
                     isOn: $model.includeWatchRootInCleanup
                 )
+            } header: {
+                Text("Threshold")
+            } footer: {
+                Text("Cleanup lists files that have not been opened or modified for this long.")
             }
-            Section("Queue") {
+            Section {
                 if model.cleanupCandidates.isEmpty {
                     ContentUnavailableView(
                         "No cleanup candidates",
                         systemImage: "clock.arrow.circlepath",
-                        description: Text("Files not opened or modified for \(model.cleanupThresholdDays) days will show up here for File Away, Delete, or Keep.")
+                        description: Text("Files not opened or modified for \(model.cleanupThresholdDays) days will show up here.")
                     )
                     .frame(minHeight: 180)
                 } else {
                     CleanupQueueTable()
                 }
+            } header: {
+                Text("Queue")
             }
         }
         .formStyle(.grouped)
         .padding()
+        .onAppear {
+            model.scanCleanupCandidates()
+        }
     }
 }
 
@@ -60,27 +69,54 @@ private struct CleanupQueueTable: View {
             }
             .frame(minHeight: 160)
             HStack {
-                Button("File Away") {}
-                    .disabled(selection == nil)
-                Button("Keep") {}
-                    .disabled(selection == nil)
+                Button("File Away") {
+                    if let candidate {
+                        model.fileAway(candidate)
+                        selection = nil
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(candidate == nil)
+                Button("Keep") {
+                    if let candidate {
+                        model.keep(candidate)
+                        selection = nil
+                    }
+                }
+                .disabled(candidate == nil)
                 Button("Delete", role: .destructive) {
                     confirmDelete = true
                 }
-                .disabled(selection == nil)
+                .disabled(candidate == nil)
                 .foregroundStyle(IntakeColor.danger)
             }
         }
         .confirmationDialog(
-            "Delete this file?",
+            deleteTitle,
             isPresented: $confirmDelete,
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) {}
+            Button("Delete", role: .destructive) {
+                if let candidate {
+                    model.delete(candidate)
+                    selection = nil
+                }
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This cannot be undone from Intake.")
+            Text("Intake moves it to Trash.")
         }
+    }
+
+    private var candidate: CleanupCandidate? {
+        model.cleanupCandidates.first { $0.url == selection }
+    }
+
+    private var deleteTitle: String {
+        if let name = candidate?.url.lastPathComponent {
+            return "Delete “\(name)”?"
+        }
+        return "Delete this file?"
     }
 
     private func byteCount(_ value: Int64) -> String {

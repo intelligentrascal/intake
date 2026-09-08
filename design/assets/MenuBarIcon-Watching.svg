@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Intake menu bar TEMPLATE icon — Watching (16–18pt).
+     Pure black silhouette on transparent. Use as NSImage template (isTemplate = true).
+     Metaphor: soft catch — document settling into U cradle. Not folder/tray. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none">
+  <!-- U cradle -->
+  <path fill="#000" fill-rule="evenodd" d="M3.25 8.2c0-.41.34-.75.75-.75h.7c.41 0 .75.34.75.75v2.55c0 1.52 1.23 2.75 2.75 2.75h1.6c1.52 0 2.75-1.23 2.75-2.75V8.2c0-.41.34-.75.75-.75h.7c.41 0 .75.34.75.75v2.55A4.25 4.25 0 0 1 9.8 15H8.2A4.25 4.25 0 0 1 3.95 10.75V8.2Z"/>
+  <!-- Document (descending) -->
+  <path fill="#000" d="M6.85 2.4h3.05c.55 0 1 .45 1 1v5.35c0 .55-.45 1-1 1H6.85c-.55 0-1-.45-1-1V3.4c0-.55.45-1 1-1Zm.55 1.65v.7h2v-.7h-2Zm0 1.55v.7h2v-.7h-2Zm0 1.55v.7h1.35v-.7H7.4Z"/>
+  <!-- Motion tick (small descending cue) -->
+  <path fill="#000" d="M8.55 1.15c.2-.2.52-.2.72 0l.85.85a.5.5 0 0 1-.71.71L9.2 2.2 8.99 2.71a.5.5 0 0 1-.7-.7l.26-.86Z"/>
+</svg>

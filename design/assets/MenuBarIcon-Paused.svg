@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Intake menu bar TEMPLATE icon — Paused (16–18pt). Same cradle, pause bars instead of motion. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none">
+  <path fill="#000" fill-rule="evenodd" d="M3.25 8.2c0-.41.34-.75.75-.75h.7c.41 0 .75.34.75.75v2.55c0 1.52 1.23 2.75 2.75 2.75h1.6c1.52 0 2.75-1.23 2.75-2.75V8.2c0-.41.34-.75.75-.75h.7c.41 0 .75.34.75.75v2.55A4.25 4.25 0 0 1 9.8 15H8.2A4.25 4.25 0 0 1 3.95 10.75V8.2Z"/>
+  <path fill="#000" d="M6.85 2.55h3.05c.55 0 1 .45 1 1v4.9c0 .55-.45 1-1 1H6.85c-.55 0-1-.45-1-1v-4.9c0-.55.45-1 1-1Z"/>
+  <!-- Pause bars cut from doc via overlay bars -->
+  <rect x="7.35" y="4.1" width="1.05" height="3.2" rx="0.35" fill="#000"/>
+  <rect x="9.55" y="4.1" width="1.05" height="3.2" rx="0.35" fill="#000"/>
+</svg>

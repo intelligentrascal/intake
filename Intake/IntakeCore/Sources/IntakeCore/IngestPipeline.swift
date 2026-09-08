@@ -77,7 +77,8 @@ public struct IngestPipeline: Sendable {
                     date: now,
                     kind: .renamed,
                     detail: "Renamed \(plan.sourceURL.lastPathComponent) to \(plan.renamedFileName)",
-                    url: current
+                    url: current,
+                    fileName: plan.renamedFileName
                 )
             )
         }
@@ -105,7 +106,9 @@ public struct IngestPipeline: Sendable {
                 date: now,
                 kind: .moved,
                 detail: "Moved \(destination.lastPathComponent) to \(plan.category.folderName)",
-                url: destination
+                url: destination,
+                fileName: destination.lastPathComponent,
+                destinationFolder: plan.category.folderName
             )
         )
         return entries

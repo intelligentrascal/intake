@@ -19,15 +19,28 @@ final class AppModel {
         }
     }
 
-    var rules: [RoutingRule]
-    var activity: [ActivityEntry]
+    var watchFolderBookmarkLost: Bool
+    var rules: [RoutingRule] {
+        didSet { persistRules() }
+    }
+
+    var activity: [ActivityEntry] {
+        didSet { persistActivity() }
+    }
+
     var cleanupCandidates: [CleanupCandidate]
     var cleanupThresholdDays: Int {
-        didSet { UserDefaults.standard.set(cleanupThresholdDays, forKey: SettingsKey.cleanupDays) }
+        didSet {
+            UserDefaults.standard.set(cleanupThresholdDays, forKey: SettingsKey.cleanupDays)
+            scanCleanupCandidates()
+        }
     }
 
     var includeWatchRootInCleanup: Bool {
-        didSet { UserDefaults.standard.set(includeWatchRootInCleanup, forKey: SettingsKey.includeRoot) }
+        didSet {
+            UserDefaults.standard.set(includeWatchRootInCleanup, forKey: SettingsKey.includeRoot)
+            scanCleanupCandidates()
+        }
     }
 
     var aiSuggestionsEnabled: Bool {
@@ -35,16 +48,33 @@ final class AppModel {
     }
 
     var launchAtLoginEnabled: Bool
+    var showsInDock: Bool
+    var showsInMenuBar: Bool
+    var selectedSettingsPane: SettingsPane {
+        didSet { UserDefaults.standard.set(selectedSettingsPane.rawValue, forKey: SettingsKey.settingsPane) }
+    }
+
+    var showFirstRunTip = false
+    var keepOneSurfaceAlert = false
+    var snoozedUntil: [String: Date] {
+        didSet { persistSnooze() }
+    }
 
     var recentActivity: [ActivityEntry] {
         Array(activity.prefix(5))
     }
 
     var statusTitle: String {
-        isPaused ? "Paused" : "Watching"
+        if watchFolderBookmarkLost {
+            return "Attention"
+        }
+        return isPaused ? "Paused" : "Watching"
     }
 
     var statusSubtitle: String {
+        if watchFolderBookmarkLost {
+            return "Needs folder access"
+        }
         let folder = watchFolder.lastPathComponent
         if isPaused {
             return "Organizing is paused · \(folder)"
@@ -52,12 +82,11 @@ final class AppModel {
         return "New files in \(folder)"
     }
 
-    var menuBarSymbol: String {
-        isPaused ? "pause.circle.fill" : "tray.and.arrow.down.fill"
-    }
-
     var menuBarAccessibilityLabel: String {
-        isPaused ? "Intake paused" : "Intake watching"
+        if watchFolderBookmarkLost {
+            return "Intake needs folder access"
+        }
+        return isPaused ? "Intake paused" : "Intake watching"
     }
 
     @ObservationIgnored
@@ -73,13 +102,32 @@ final class AppModel {
         cleanupThresholdDays = defaults.object(forKey: SettingsKey.cleanupDays) as? Int ?? 30
         includeWatchRootInCleanup = defaults.object(forKey: SettingsKey.includeRoot) as? Bool ?? true
         aiSuggestionsEnabled = defaults.bool(forKey: SettingsKey.aiSuggestions)
-        rules = DefaultTaxonomy.rules
-        activity = []
+        showsInDock = defaults.object(forKey: SettingsKey.showDock) as? Bool ?? true
+        showsInMenuBar = defaults.object(forKey: SettingsKey.showMenuBar) as? Bool ?? true
+        selectedSettingsPane = SettingsPane(
+            rawValue: defaults.string(forKey: SettingsKey.settingsPane) ?? ""
+        ) ?? .general
+        rules = Self.loadRules()
+        activity = Self.loadActivity()
+        snoozedUntil = Self.loadSnooze()
         cleanupCandidates = []
         launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
-        watchFolder = Self.resolvedWatchFolder()
+        let resolved = Self.resolveWatchFolder()
+        watchFolder = resolved.url
+        watchFolderBookmarkLost = resolved.lost
         startAccessingWatchFolder()
         restartWatcher()
+    }
+
+    func applicationDidFinishLaunching() {
+        applyActivationPolicy()
+        scanCleanupCandidates()
+        if !UserDefaults.standard.bool(forKey: SettingsKey.didShowMenuBarTip) {
+            showFirstRunTip = true
+            Task { @MainActor in
+                self.bringPrimaryWindowForward()
+            }
+        }
     }
 
     func togglePaused() {
@@ -96,12 +144,52 @@ final class AppModel {
         }
     }
 
+    func setShowsInDock(_ show: Bool) {
+        if !show && !showsInMenuBar {
+            keepOneSurfaceAlert = true
+            return
+        }
+        showsInDock = show
+        UserDefaults.standard.set(show, forKey: SettingsKey.showDock)
+        applyActivationPolicy()
+    }
+
+    func setShowsInMenuBar(_ show: Bool) {
+        if !show && !showsInDock {
+            keepOneSurfaceAlert = true
+            return
+        }
+        showsInMenuBar = show
+        UserDefaults.standard.set(show, forKey: SettingsKey.showMenuBar)
+    }
+
+    func applyActivationPolicy() {
+        NSApp.setActivationPolicy(showsInDock ? .regular : .accessory)
+    }
+
+    func bringPrimaryWindowForward() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
+    func openSettings(pane: SettingsPane) {
+        selectedSettingsPane = pane
+        bringPrimaryWindowForward()
+    }
+
+    func acknowledgeFirstRunTip() {
+        showFirstRunTip = false
+        UserDefaults.standard.set(true, forKey: SettingsKey.didShowMenuBarTip)
+    }
+
     func chooseWatchFolder() {
         guard let url = WatchFolderPicker.present(startingAt: watchFolder) else { return }
         stopAccessingWatchFolder()
+        watchFolderBookmarkLost = false
         watchFolder = url
         startAccessingWatchFolder()
         restartWatcher()
+        scanCleanupCandidates()
     }
 
     func revealWatchFolder() {
@@ -111,6 +199,12 @@ final class AppModel {
     func reveal(_ url: URL?) {
         guard let url else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    func copyPath(_ url: URL?) {
+        guard let url else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.path, forType: .string)
     }
 
     func binding(for rule: RoutingRule) -> Binding<Bool> {
@@ -138,7 +232,8 @@ final class AppModel {
             record(
                 ActivityEntry(
                     kind: .error,
-                    detail: "Could not update Open at Login: \(error.localizedDescription)"
+                    detail: "Could not update Open at Login: \(error.localizedDescription)",
+                    fileName: "Open at Login"
                 )
             )
             launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
@@ -157,7 +252,8 @@ final class AppModel {
                 ActivityEntry(
                     kind: .skipped,
                     detail: "Skipped \(url.lastPathComponent)",
-                    url: url
+                    url: url,
+                    fileName: url.lastPathComponent
                 )
             )
             return
@@ -176,10 +272,84 @@ final class AppModel {
                 ActivityEntry(
                     kind: .error,
                     detail: "Could not file \(url.lastPathComponent): \(error.localizedDescription)",
-                    url: url
+                    url: url,
+                    fileName: url.lastPathComponent
                 )
             )
         }
+    }
+
+    func scanCleanupCandidates() {
+        cleanupCandidates = CleanupScanner(
+            watchFolder: watchFolder,
+            thresholdDays: cleanupThresholdDays,
+            includeWatchRoot: includeWatchRootInCleanup,
+            snoozedUntil: snoozedUntil
+        ).candidates()
+    }
+
+    func fileAway(_ candidate: CleanupCandidate) {
+        guard let directory = DestinationFolderPicker.present(startingAt: watchFolder) else { return }
+        do {
+            let entry = try CleanupProcessor(watchFolder: watchFolder).fileAway(candidate, to: directory)
+            record(entry)
+            pruneEmptyManagedFolders()
+            scanCleanupCandidates()
+        } catch {
+            record(
+                ActivityEntry(
+                    kind: .error,
+                    detail: "Could not file away \(candidate.url.lastPathComponent): \(error.localizedDescription)",
+                    url: candidate.url,
+                    fileName: candidate.url.lastPathComponent
+                )
+            )
+        }
+    }
+
+    func keep(_ candidate: CleanupCandidate) {
+        var next = snoozedUntil
+        next[candidate.url.path] = CleanupScanner(
+            watchFolder: watchFolder,
+            thresholdDays: cleanupThresholdDays,
+            includeWatchRoot: includeWatchRootInCleanup,
+            snoozedUntil: snoozedUntil
+        ).snoozeDate()
+        snoozedUntil = next
+        scanCleanupCandidates()
+    }
+
+    func delete(_ candidate: CleanupCandidate) {
+        NSWorkspace.shared.recycle([candidate.url]) { [weak self] _, error in
+            Task { @MainActor in
+                guard let self else { return }
+                if let error {
+                    self.record(
+                        ActivityEntry(
+                            kind: .error,
+                            detail: "Could not delete \(candidate.url.lastPathComponent): \(error.localizedDescription)",
+                            url: candidate.url,
+                            fileName: candidate.url.lastPathComponent
+                        )
+                    )
+                    return
+                }
+                self.record(
+                    ActivityEntry(
+                        kind: .deleted,
+                        detail: "Deleted \(candidate.url.lastPathComponent)",
+                        fileName: candidate.url.lastPathComponent
+                    )
+                )
+                self.pruneEmptyManagedFolders()
+                self.scanCleanupCandidates()
+            }
+        }
+    }
+
+    private func pruneEmptyManagedFolders() {
+        let entries = CleanupProcessor(watchFolder: watchFolder).removeEmptyManagedFolders()
+        entries.reversed().forEach(record)
     }
 
     private func restartWatcher() {
@@ -192,10 +362,25 @@ final class AppModel {
     }
 
     private func record(_ entry: ActivityEntry) {
-        activity.insert(entry, at: 0)
-        if activity.count > 50 {
-            activity = Array(activity.prefix(50))
+        activity = ActivityLog.inserting(entry, into: activity)
+    }
+
+    private func persistActivity() {
+        if let data = try? ActivityLog.encode(activity) {
+            UserDefaults.standard.set(data, forKey: SettingsKey.activity)
         }
+    }
+
+    private func persistRules() {
+        UserDefaults.standard.set(
+            RulePersistence.enabledByCategory(from: rules),
+            forKey: SettingsKey.ruleEnabled
+        )
+    }
+
+    private func persistSnooze() {
+        let raw = snoozedUntil.mapValues(\.timeIntervalSince1970)
+        UserDefaults.standard.set(raw, forKey: SettingsKey.cleanupSnooze)
     }
 
     private func existingNames(in directory: URL?) -> Set<String> {
@@ -224,11 +409,11 @@ final class AppModel {
         }
     }
 
-    private static func resolvedWatchFolder() -> URL {
+    private static func resolveWatchFolder() -> (url: URL, lost: Bool) {
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
         guard let data = UserDefaults.standard.data(forKey: SettingsKey.watchFolderBookmark) else {
-            return downloads
+            return (downloads, false)
         }
         var stale = false
         guard let url = try? URL(
@@ -237,9 +422,26 @@ final class AppModel {
             relativeTo: nil,
             bookmarkDataIsStale: &stale
         ) else {
-            return downloads
+            return (downloads, true)
         }
-        return url
+        return (url, false)
+    }
+
+    private static func loadRules() -> [RoutingRule] {
+        let flags = UserDefaults.standard.dictionary(forKey: SettingsKey.ruleEnabled) as? [String: Bool] ?? [:]
+        return RulePersistence.applying(flags, to: DefaultTaxonomy.rules)
+    }
+
+    private static func loadActivity() -> [ActivityEntry] {
+        guard let data = UserDefaults.standard.data(forKey: SettingsKey.activity) else {
+            return []
+        }
+        return (try? ActivityLog.decode(data)) ?? []
+    }
+
+    private static func loadSnooze() -> [String: Date] {
+        let raw = UserDefaults.standard.dictionary(forKey: SettingsKey.cleanupSnooze) as? [String: Double] ?? [:]
+        return raw.mapValues(Date.init(timeIntervalSince1970:))
     }
 }
 
@@ -249,4 +451,11 @@ private enum SettingsKey {
     static let includeRoot = "intake.includeWatchRoot"
     static let aiSuggestions = "intake.aiSuggestions"
     static let watchFolderBookmark = "intake.watchFolderBookmark"
+    static let showDock = "intake.showInDock"
+    static let showMenuBar = "intake.showInMenuBar"
+    static let settingsPane = "intake.settingsPane"
+    static let activity = "intake.activity"
+    static let ruleEnabled = "intake.ruleEnabled"
+    static let cleanupSnooze = "intake.cleanupSnooze"
+    static let didShowMenuBarTip = "intake.didShowMenuBarTip"
 }

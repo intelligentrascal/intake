@@ -4,7 +4,7 @@
 
 Free and open source. Private by design: watching and organizing stay on your Mac.
 
-> Status: SwiftUI menu-bar scaffold with taxonomy, ignore policy, and rename-then-route stubs.
+> Status: Native macOS SwiftUI app — Dock + menu bar, Settings, live Downloads watcher, Activity, and Cleanup.
 
 ## What it does
 
