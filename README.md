@@ -4,15 +4,15 @@
 
 Free and open source. Private by design: watching and organizing stay on your Mac.
 
-> Status: early scaffolding. App target and FS watcher land next.
+> Status: SwiftUI menu-bar scaffold with taxonomy, ignore policy, and rename-then-route stubs.
 
 ## What it does
 
-1. **Watch** `~/Downloads` (configurable) in the background  
-2. **Rename** new downloads to something human-readable (Arc-style clarity)  
-3. **Route** by rules into lazy folders (`Documents`, `Presentations`, `Images`, …)  
-4. **Cleanup** — untouched files past a duration show up for File away / Delete / Keep  
-5. **Optional AI** (later) — mix local Ollama and optional Claude / Cursor / Codex CLIs for suggestions when rules aren’t enough  
+1. **Watch** `~/Downloads` (configurable) in the background
+2. **Rename** new downloads to something human-readable (Arc-style clarity)
+3. **Route** by rules into lazy folders (`Documents`, `Presentations`, `Images`, …)
+4. **Cleanup** — untouched files past a duration show up for File away / Delete / Keep
+5. **Optional AI** (later) — mix local Ollama and optional Claude / Cursor / Codex CLIs for suggestions when rules aren’t enough
 
 ## Design
 
@@ -28,15 +28,18 @@ Native **SwiftUI** + **Apple Human Interface Guidelines**. Product tokens and sc
 ## Repo layout
 
 ```text
-Intake/           # Xcode app (coming)
-docs/             # PRODUCT, DESIGN, architecture
-.github/          # CI, templates
-LICENSE           # MIT
+Intake/                 # Xcode app (MenuBarExtra + Settings)
+Intake/IntakeCore/      # rules, taxonomy, ingest stubs
+docs/                   # PRODUCT, DESIGN
+.github/                # issue templates
+LICENSE                 # MIT
 ```
+
+Open `Intake/Intake.xcodeproj`. Core logic can be tested with `swift test --package-path Intake/IntakeCore`.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome once the app skeleton lands.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
