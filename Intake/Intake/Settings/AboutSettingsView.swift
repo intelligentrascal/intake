@@ -21,13 +21,17 @@ struct AboutSettingsView: View {
                 LabeledContent("Version", value: versionString)
                 LabeledContent("License", value: "MIT")
             }
-            Section("Links") {
+            Section {
                 Link("GitHub repository", destination: githubURL)
                 Link("Security policy", destination: securityURL)
+            } header: {
+                Text("Links")
             }
-            Section("Privacy") {
+            Section {
                 Text("Watching, renaming, and filing stay on this Mac. AI assist is opt-in and off by default.")
                     .foregroundStyle(.secondary)
+            } header: {
+                Text("Privacy")
             }
         }
         .formStyle(.grouped)

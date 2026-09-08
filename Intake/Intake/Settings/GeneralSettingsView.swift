@@ -38,7 +38,7 @@ struct GeneralSettingsView: View {
             } footer: {
                 Text("Intake waits until a download is stable, then renames it and files it into a typed folder. Folders appear only when needed.")
             }
-            Section("Organizing") {
+            Section {
                 Toggle("Pause organizing", isOn: Binding(
                     get: { model.isPaused },
                     set: { model.setPaused($0) }
@@ -47,6 +47,8 @@ struct GeneralSettingsView: View {
                     get: { model.launchAtLoginEnabled },
                     set: { model.setLaunchAtLogin($0) }
                 ))
+            } header: {
+                Text("Organizing")
             }
             Section {
                 Toggle(

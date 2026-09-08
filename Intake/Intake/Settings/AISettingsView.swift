@@ -38,7 +38,7 @@ struct AISettingsView: View {
             } footer: {
                 Text("Off by default. Core organizing uses extension rules only.")
             }
-            Section("Providers") {
+            Section {
                 ForEach(AIProviderPlaceholder.allCases) { provider in
                     LabeledContent(provider.title) {
                         Text("Unavailable")
@@ -48,6 +48,8 @@ struct AISettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            } header: {
+                Text("Providers")
             } footer: {
                 Text("Intake does not send file contents to a network service unless you enable a provider.")
             }

@@ -20,7 +20,7 @@ struct CleanupSettingsView: View {
             } footer: {
                 Text("Cleanup lists files that have not been opened or modified for this long.")
             }
-            Section("Queue") {
+            Section {
                 if model.cleanupCandidates.isEmpty {
                     ContentUnavailableView(
                         "No cleanup candidates",
@@ -31,6 +31,8 @@ struct CleanupSettingsView: View {
                 } else {
                     CleanupQueueTable()
                 }
+            } header: {
+                Text("Queue")
             }
         }
         .formStyle(.grouped)
