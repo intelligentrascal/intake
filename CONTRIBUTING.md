@@ -12,8 +12,9 @@ Thanks for helping with Intake.
 ## Setup
 
 1. Clone this repo  
-2. Open the Xcode project when it exists (`Intake/Intake.xcodeproj`)  
+2. Open `Intake/Intake.xcodeproj`  
 3. Build & run on macOS 26+  
+4. Optional: `swift test --package-path Intake/IntakeCore` for taxonomy and ingest stubs  
 
 ## License
 
