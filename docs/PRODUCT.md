@@ -15,7 +15,13 @@ People on macOS who download constantly and want the folder to stay navigable wi
 3. **Rules over magic** — deterministic extension/type rules by default; AI is opt-in assist.
 4. **Private by default** — local FS only unless the user enables a provider.
 5. **Reversible cleanup** — surface candidates; user files away or deletes; no silent mass delete.
-6. **Native citizen** — menu bar + Settings; Apple HIG; no web chrome cosplay.
+6. **Native citizen** — Dock + menu bar + Settings; Apple HIG; no web chrome cosplay.
+
+## Findability
+
+Users discover Intake from the **Dock** (on by default) and the **menu bar** (on by default, soft-catch template icon). First-run shows a one-time tip: Intake lives in the menu bar. Show in Dock / Show in menu bar can each be turned off, but **not both** — there must always be an icon that reopens Settings.
+
+Pause is always one click away. Delete is never silent. AI is never on by default.
 
 ## Default taxonomy (under the watch folder)
 
@@ -31,7 +37,7 @@ People on macOS who download constantly and want the folder to stay navigable wi
 | Installers | dmg, pkg (may share Archives via rules) |
 | Other | unmatched types (folder only if something lands here) |
 
-Users can edit rules later. Folder names are localizable later; English defaults for v1.
+Users can edit rules later. Folder names are localizable later; English defaults for v1. Enabled rules persist across launches.
 
 ## Core flows
 
@@ -41,14 +47,27 @@ Users can edit rules later. Folder names are localizable later; English defaults
 3. Match rule → ensure destination folder exists → move.
 4. Log to Activity.
 
+### Activity
+Chronological **audit trail** of rename / move / skip / error (plus cleanup delete and empty-folder removal). It is not the Cleanup queue. Rows persist across launches. Select a row to Reveal in Finder.
+
 ### Cleanup
 1. Scan Intake-managed paths (and optionally loose files still in watch root).
-2. Files not opened/modified for *N* days appear in Cleanup.
-3. Actions: **File away** (pick folder / rule), **Delete**, **Keep** (snooze / exclude).
+2. Files not opened/modified for *N* days appear in Cleanup — a **decision queue**, never merged with Activity.
+3. Actions: **File Away** (pick folder), **Delete** (confirm), **Keep** (snooze / exclude).
 4. After moves/deletes, remove empty Intake-created category folders.
 
 ### AI (phase 2)
 Pluggable providers: local **Ollama**, optional CLIs (`claude`, `agent`/`cursor`, `codex`) when installed. Used for suggest-name / suggest-bucket when rules miss. Off by default; mix-and-match. Never required for core ingest.
+
+## Chrome
+
+| Surface | Default | Notes |
+|---|---|---|
+| Dock | **On** | Regular activation policy. Clicking the Dock icon brings Settings (or the last Settings pane) forward. Hiding the Dock does not quit. |
+| Menu bar | **On** | Status, pause/resume, recent activity (Reveal), Settings…, Quit. Optional Open Activity / Open Cleanup while Dock is on. |
+| Both off | **Forbidden** | Alert: “Keep one way to open Intake.” |
+
+Do **not** ship a permanent `LSUIElement=1` Info.plist default. Dock visibility uses runtime `NSApplication.ActivationPolicy` (`.regular` vs `.accessory`).
 
 ## Non-goals (v1)
 
@@ -56,6 +75,7 @@ Pluggable providers: local **Ollama**, optional CLIs (`claude`, `agent`/`cursor`
 - Cloud sync of file contents for organizing
 - Windows/Linux
 - Copying Thaw or other GPL UI source
+- Managing or restyling other apps’ menu bar items
 
 ## Success
 

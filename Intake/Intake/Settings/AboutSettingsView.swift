@@ -1,12 +1,22 @@
+import AppKit
 import SwiftUI
 
 struct AboutSettingsView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Intake") {
-                    Text("Downloads organizer")
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApplication.shared.applicationIconImage)
+                        .resizable()
+                        .frame(width: 64, height: 64)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Intake")
+                            .font(.headline)
+                        Text("Downloads organizer")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
                 }
                 LabeledContent("Version", value: versionString)
                 LabeledContent("License", value: "MIT")
@@ -16,7 +26,7 @@ struct AboutSettingsView: View {
                 Link("Security policy", destination: securityURL)
             }
             Section("Privacy") {
-                Text("Watching, renaming, and filing stay on this Mac. AI assist is opt-in and off.")
+                Text("Watching, renaming, and filing stay on this Mac. AI assist is opt-in and off by default.")
                     .foregroundStyle(.secondary)
             }
         }

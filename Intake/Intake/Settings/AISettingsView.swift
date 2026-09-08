@@ -35,8 +35,8 @@ struct AISettingsView: View {
         Form {
             Section {
                 Toggle("Suggest names and folders with AI", isOn: $model.aiSuggestionsEnabled)
-                Text("Off by default. Core ingest uses extension rules only. Providers are not wired yet.")
-                    .foregroundStyle(.secondary)
+            } footer: {
+                Text("Off by default. Core organizing uses extension rules only.")
             }
             Section("Providers") {
                 ForEach(AIProviderPlaceholder.allCases) { provider in
@@ -48,10 +48,8 @@ struct AISettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            }
-            Section {
-                Text("Intake never sends file contents to a network service unless you turn a provider on in a later release.")
-                    .foregroundStyle(.secondary)
+            } footer: {
+                Text("Intake does not send file contents to a network service unless you enable a provider.")
             }
         }
         .formStyle(.grouped)

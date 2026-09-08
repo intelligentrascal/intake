@@ -14,7 +14,39 @@ struct FileNameNormalizerTests {
     @Test
     func decodesPercentEncodingAndPlusSigns() {
         let url = URL(fileURLWithPath: "/tmp/hello%20world+notes.txt")
-        #expect(normalizer.proposedFileName(for: url) == "hello world notes.txt")
+        #expect(normalizer.proposedFileName(for: url) == "Hello World Notes.txt")
+    }
+
+    @Test
+    func turnsKebabCaseIntoReadableWords() {
+        let url = URL(fileURLWithPath: "/tmp/quarterly-report-q1.pdf")
+        #expect(normalizer.proposedFileName(for: url) == "Quarterly Report Q1.pdf")
+    }
+
+    @Test
+    func splitsCamelCaseWithoutTouchingExtensions() {
+        let url = URL(fileURLWithPath: "/tmp/TeamNotes.md")
+        #expect(normalizer.proposedFileName(for: url) == "Team Notes.md")
+    }
+
+    @Test
+    func stripsDuplicateDownloadSuffixes() {
+        #expect(
+            normalizer.proposedFileName(
+                for: URL(fileURLWithPath: "/tmp/Report (1).pdf")
+            ) == "Report.pdf"
+        )
+        #expect(
+            normalizer.proposedFileName(
+                for: URL(fileURLWithPath: "/tmp/Report copy.docx")
+            ) == "Report.docx"
+        )
+    }
+
+    @Test
+    func preservesHyphenatedDates() {
+        let url = URL(fileURLWithPath: "/tmp/Invoice-2024-01-15.pdf")
+        #expect(normalizer.proposedFileName(for: url) == "Invoice 2024-01-15.pdf")
     }
 
     @Test
