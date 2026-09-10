@@ -18,7 +18,7 @@ struct IntakeApp: App {
         }
         .defaultSize(width: 640, height: 520)
         .windowResizability(.contentMinSize)
-        .defaultLaunchBehavior(.presented)
+        .defaultLaunchBehavior(.automatic)
         .defaultPosition(.center)
         .commands {
             CommandGroup(after: .appSettings) {

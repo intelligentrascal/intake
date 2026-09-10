@@ -190,7 +190,9 @@ final class AppModel {
     }
 
     func bringPrimaryWindowForward() {
-        openActivity()
+        // IN-09-dock-crash: Dock / reopen opens Settings — not Activity.
+        // Avoids ActivityWindowFallback SEGV on the reopen path.
+        openSettings(pane: selectedSettingsPane)
     }
 
     func openActivity() {
@@ -209,7 +211,8 @@ final class AppModel {
                 self.front(window)
                 return
             }
-            ActivityWindowFallback.shared.present(model: self)
+            // Never construct ActivityWindowFallback — it SEGVs under Xcode 26.
+            // openWindow bridge (menu bar / Settings) may still present Activity later.
         }
     }
 
