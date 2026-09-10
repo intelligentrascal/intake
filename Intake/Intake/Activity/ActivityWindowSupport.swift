@@ -30,41 +30,24 @@ struct ActivityWindowConfigurator: NSViewRepresentable {
             window.identifier = NSUserInterfaceItemIdentifier(IntakeSceneID.activity)
             window.minSize = NSSize(width: 520, height: 420)
             window.setFrameAutosaveName("intake.activity")
-            window.isReleasedWhenClosed = true
+            window.isReleasedWhenClosed = false
             window.title = "Activity"
         }
     }
 }
 
-/// Used when no SwiftUI scene is alive to receive `openWindow` (Dock on, menu bar off, Activity closed).
+/// Former AppKit hosting fallback removed — it SEGVd (objc_retain) on macOS 26.
+/// Activity opens only via SwiftUI `openWindow` bridge or an existing scene window.
 @MainActor
-final class ActivityWindowFallback {
-    static let shared = ActivityWindowFallback()
-    private var window: NSWindow?
-
-    func present(model: AppModel) {
+enum ActivityWindowFallback {
+    static func presentIfPossible() {
         if let existing = NSApp.windows.first(where: \.isIntakeActivityWindow) {
             if existing.isMiniaturized {
                 existing.deminiaturize(nil)
             }
             existing.makeKeyAndOrderFront(nil)
-            return
         }
-        if let window {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        let root = NSHostingController(rootView: ActivityWindowView().environment(model))
-        let created = NSWindow(contentViewController: root)
-        created.title = "Activity"
-        created.identifier = NSUserInterfaceItemIdentifier(IntakeSceneID.activity)
-        created.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        created.setContentSize(NSSize(width: 640, height: 520))
-        created.minSize = NSSize(width: 520, height: 420)
-        created.setFrameAutosaveName("intake.activity")
-        created.isReleasedWhenClosed = false
-        created.makeKeyAndOrderFront(nil)
-        window = created
+        // Safe no-op when no SwiftUI Activity window exists yet.
     }
 }
 
