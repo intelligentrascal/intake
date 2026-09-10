@@ -26,4 +26,4 @@ swift test --package-path IntakeCore
 - General → Organizing uses **Automatic organizing** (not Pause) and **Wait before organizing** (default 2 hours; Immediately / 15 minutes / 1 hour / 2 hours / 1 day). Organize Existing does not wait.
 - The watcher ignores partial downloads, `.download` bundles, and quarantine metadata-only events, then waits until the file is stable and **Wait before organizing** has elapsed, then renames and routes by editable rules. **Organize Existing…** applies the same pipeline immediately to loose files already in the watch-folder root (not category folders). Enabled rules, custom rules, and Activity persist across launches.
 - Rules can be edited, reordered, and extended; on-device suggestions stay local (no network, no file contents).
-- Cleanup scans unused files and supports File Away, Keep, and Delete. OpenRouter is the first opt-in AI provider (Keychain); other providers stay placeholders.
+- Cleanup scans unused files and supports File Away, Keep, and Delete. OpenRouter is the first opt-in AI provider (Keychain). Other providers are PATH-detected (Available / Not installed) and not called yet.

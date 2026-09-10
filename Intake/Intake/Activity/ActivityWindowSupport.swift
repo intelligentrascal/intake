@@ -37,7 +37,8 @@ struct ActivityWindowConfigurator: NSViewRepresentable {
 }
 
 /// Former AppKit hosting fallback removed — it SEGVd (objc_retain) on macOS 26.
-/// Activity opens only via SwiftUI `openWindow` bridge or an existing scene window.
+/// Do not restore an `NSHostingController` path here. Activity opens only via
+/// SwiftUI `openWindow` / `openActivity()`, never as a launch/reopen surface.
 @MainActor
 enum ActivityWindowFallback {
     static func presentIfPossible() {

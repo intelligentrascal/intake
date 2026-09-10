@@ -63,7 +63,7 @@ Chronological **audit trail** of rename / move / skip / error (plus cleanup dele
 4. After moves/deletes, remove empty Intake-created category folders.
 
 ### AI
-Optional **OpenRouter** provider: Keychain API key, base URL, model. Master AI suggestions toggle and OpenRouter stay **off by default**. Network runs only when both are on, and only on rule miss / Other — filename and extension, not file contents. Ollama and CLI rows remain placeholders.
+Optional **OpenRouter** provider: Keychain API key, base URL, model. Master AI suggestions toggle and OpenRouter stay **off by default**. Network runs only when both are on, and only on rule miss / Other — filename and extension, not file contents. Ollama, Claude CLI, Cursor agent CLI (`agent` and/or `cursor` on PATH), and Codex CLI rows show **Available** vs **Not installed** from a PATH check; they are not called for suggestions yet.
 
 ## Chrome
 

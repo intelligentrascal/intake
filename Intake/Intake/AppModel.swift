@@ -192,10 +192,16 @@ final class AppModel {
             showFirstRunTip = true
         }
         Task { @MainActor in
-            if self.showsInDock || firstRun {
-                self.bringPrimaryWindowForward()
-            } else {
+            // Defense in depth: `.defaultLaunchBehavior(.suppressed)` should already
+            // keep Activity off-screen. Hide anything restoration still presented.
+            if LaunchWindowPolicy.hidesActivityAtLaunch {
                 NSApp.windows.filter(\.isIntakeActivityWindow).forEach { $0.orderOut(nil) }
+            }
+            if LaunchWindowPolicy.presentsSettings(
+                showsInDock: self.showsInDock,
+                isFirstRun: firstRun
+            ) {
+                self.bringPrimaryWindowForward()
             }
         }
     }

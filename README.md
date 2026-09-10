@@ -12,7 +12,7 @@ Free and open source. Private by design: watching and organizing stay on your Ma
 2. **Rename** new downloads to something human-readable (Arc-style clarity)
 3. **Route** by rules into lazy folders (`Documents`, `Presentations`, `Images`, …)
 4. **Cleanup** — untouched files past a duration show up for File away / Delete / Keep
-5. **Optional AI** — OpenRouter when enabled (Keychain); Ollama / Claude / Cursor / Codex CLIs stay later. Off by default.
+5. **Optional AI** — OpenRouter when enabled (Keychain) is the working provider. Ollama / Claude / Cursor / Codex CLIs are detected on PATH (Available vs Not installed) and not called yet. Off by default.
 
 ## Design
 
