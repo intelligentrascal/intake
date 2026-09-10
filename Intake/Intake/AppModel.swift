@@ -150,9 +150,13 @@ final class AppModel {
 
     init() {
         let defaults = UserDefaults.standard
-        automaticOrganizing = AutomaticOrganizingPreference.isEnabled(in: defaults)
-        AutomaticOrganizingPreference.persist(automaticOrganizing, to: defaults)
-        organizingWait = OrganizingWait.load(from: defaults)
+        // Load into locals first — do not read `self` until every stored property is set
+        // (Swift 6 / @Observable rejects self.automaticOrganizing before organizingWait init).
+        let autoEnabled = AutomaticOrganizingPreference.isEnabled(in: defaults)
+        let waitPreference = OrganizingWait.load(from: defaults)
+        organizingWait = waitPreference
+        automaticOrganizing = autoEnabled
+        AutomaticOrganizingPreference.persist(autoEnabled, to: defaults)
         cleanupThresholdDays = defaults.object(forKey: SettingsKey.cleanupDays) as? Int ?? 30
         includeWatchRootInCleanup = defaults.object(forKey: SettingsKey.includeRoot) as? Bool ?? true
         aiSuggestionsEnabled = defaults.bool(forKey: SettingsKey.aiSuggestions)
