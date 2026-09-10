@@ -4,7 +4,7 @@
 
 Free and open source. Private by design: watching and organizing stay on your Mac.
 
-> Status: Native macOS SwiftUI app — Dock + menu bar, Settings, live Downloads watcher, Activity, and Cleanup.
+> Status: Native macOS SwiftUI app — Dock + menu bar, Activity primary window, Settings, live Downloads watcher, Organize Existing, and Cleanup.
 
 ## What it does
 

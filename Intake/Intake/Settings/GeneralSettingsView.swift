@@ -1,4 +1,5 @@
 import SwiftUI
+import IntakeCore
 
 struct GeneralSettingsView: View {
     @Environment(AppModel.self) private var model
@@ -39,6 +40,20 @@ struct GeneralSettingsView: View {
                 Text("Intake waits until a download is stable, then renames it and files it into a typed folder. Folders appear only when needed.")
             }
             Section {
+                Button(OrganizeExistingCopy.menuTitle) {
+                    model.requestOrganizeExisting()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isOrganizingExisting || model.watchFolderBookmarkLost)
+                Button("Activity") {
+                    model.openActivity()
+                }
+            } header: {
+                Text("Catch up")
+            } footer: {
+                Text("Rename and file loose items already in the watch folder root. Files in category folders are left alone. Allowed while paused; does not resume watching.")
+            }
+            Section {
                 Toggle("Pause organizing", isOn: Binding(
                     get: { model.isPaused },
                     set: { model.setPaused($0) }
@@ -68,7 +83,7 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Appearance in macOS")
             } footer: {
-                Text("Keep Intake in the Dock so it’s easy to open Settings, Activity, and Cleanup. The menu bar shows status and pause/resume without opening a window.")
+                Text("Keep Intake in the Dock so it’s easy to open Activity. The menu bar shows status and pause/resume without opening a window.")
             }
         }
         .formStyle(.grouped)

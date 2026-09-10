@@ -19,7 +19,7 @@ People on macOS who download constantly and want the folder to stay navigable wi
 
 ## Findability
 
-Users discover Intake from the **Dock** (on by default) and the **menu bar** (on by default, soft-catch template icon). First-run shows a one-time tip: Intake lives in the Dock and the menu bar. Show in Dock / Show in menu bar can each be turned off, but **not both** — there must always be an icon that reopens Settings.
+Users discover Intake from the **Dock** (on by default) and the **menu bar** (on by default, dense 16pt soft-catch template icon). Dock click, reopen, and a normal launch bring the **Activity** window forward. First-run shows a one-time tip: Intake lives in the Dock and the menu bar. Show in Dock / Show in menu bar can each be turned off, but **not both** — there must always be an icon that reopens Intake.
 
 Pause is always one click away. Delete is never silent. AI is never on by default.
 
@@ -47,8 +47,11 @@ Users can edit rules later. Folder names are localizable later; English defaults
 3. Match rule → ensure destination folder exists → move.
 4. Log to Activity.
 
+### Organize existing
+Manual one-shot from the menu bar (**Organize Existing…**) or Settings → General. Scans **watch-folder root only** (does not recurse into Intake-managed category folders). Applies the same ignore policy and rename → route → Activity pipeline as live ingest. Confirmation before run; cancel stops scheduling new files. Allowed while paused (does not unpause the watcher). Never runs automatically on launch. Lazy folders only.
+
 ### Activity
-Chronological **audit trail** of rename / move / skip / error (plus cleanup delete and empty-folder removal). It is not the Cleanup queue. Rows persist across launches. Double-click a row, or use Reveal in Finder (toolbar or context menu) to open it in Finder. Context menu also copies the path. Selecting a row does not reveal it.
+Chronological **audit trail** of rename / move / skip / error (plus cleanup delete and empty-folder removal). It is the **primary window**. It is not the Cleanup queue. Rows persist across launches. Double-click a row, or use Reveal in Finder (toolbar or context menu) to open it in Finder. Context menu also copies the path. Selecting a row does not reveal it.
 
 ### Cleanup
 1. Scan Intake-managed paths (and optionally loose files still in watch root).
@@ -63,11 +66,11 @@ Pluggable providers: local **Ollama**, optional CLIs (`claude`, `agent`/`cursor`
 
 | Surface | Default | Notes |
 |---|---|---|
-| Dock | **On** | Regular activation policy. Clicking the Dock icon brings Settings (or the last Settings pane) forward. Hiding the Dock does not quit. |
-| Menu bar | **On** | Status, pause/resume, recent activity (Reveal), Settings…, Quit. Optional Open Activity / Open Cleanup while Dock is on. |
+| Dock | **On** | Regular activation policy. Clicking the Dock icon (or launching like a normal app) brings the **Activity** window forward. Hiding the Dock does not quit. |
+| Menu bar | **On** | Status, pause/resume, Organize Existing…, Open Activity, Settings…, Quit. Dense 16pt template glyphs (Watching vs Paused). The extra follows the system menu bar; macOS does not offer a supported way to pin it to every display. |
 | Both off | **Forbidden** | Alert: “Keep one way to open Intake.” |
 
-Do **not** ship a permanent `LSUIElement=1` Info.plist default. Dock visibility uses runtime `NSApplication.ActivationPolicy` (`.regular` vs `.accessory`).
+Do **not** ship a permanent `LSUIElement=1` Info.plist default. Dock visibility uses runtime `NSApplication.ActivationPolicy` (`.regular` vs `.accessory`). Settings stay reachable via ⌘, / **Settings…** — not via Dock click.
 
 ## Non-goals (v1)
 

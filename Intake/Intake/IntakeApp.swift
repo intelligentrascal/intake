@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import IntakeCore
 
 @main
 struct IntakeApp: App {
@@ -10,9 +11,34 @@ struct IntakeApp: App {
         let _ = model.showsInMenuBar
         let _ = model.isPaused
 
+        Window("Activity", id: IntakeSceneID.activity) {
+            ActivityWindowView()
+                .environment(model)
+                .background(ActivityWindowOpenBridge().environment(model))
+        }
+        .defaultSize(width: 640, height: 520)
+        .windowResizability(.contentMinSize)
+        .defaultLaunchBehavior(.presented)
+        .defaultPosition(.center)
+        .commands {
+            CommandGroup(after: .appSettings) {
+                Button(model.isPaused ? "Resume Organizing" : "Pause Organizing") {
+                    model.togglePaused()
+                }
+                Button(OrganizeExistingCopy.menuTitle) {
+                    model.requestOrganizeExisting()
+                }
+                .disabled(model.isOrganizingExisting || model.watchFolderBookmarkLost)
+                Button("Activity") {
+                    model.openActivity()
+                }
+            }
+        }
+
         MenuBarExtra(isInserted: menuBarInserted) {
             MenuBarContentView()
                 .environment(model)
+                .background(ActivityWindowOpenBridge().environment(model))
         } label: {
             MenuBarLabel()
                 .environment(model)
@@ -23,13 +49,7 @@ struct IntakeApp: App {
             SettingsRootView()
                 .environment(model)
                 .frame(minWidth: 720, minHeight: 480)
-        }
-        .commands {
-            CommandGroup(after: .appSettings) {
-                Button(model.isPaused ? "Resume Organizing" : "Pause Organizing") {
-                    model.togglePaused()
-                }
-            }
+                .background(ActivityWindowOpenBridge().environment(model))
         }
     }
 
@@ -52,5 +72,9 @@ final class IntakeAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         model.bringPrimaryWindowForward()
         return true
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 }

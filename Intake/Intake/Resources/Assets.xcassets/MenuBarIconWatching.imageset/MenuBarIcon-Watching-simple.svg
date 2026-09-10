@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- Simplified 16pt template: cradle + doc. Prefer this for production if detailed SVG muddies. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <g fill="#000">
-    <path d="M2.5 7.25c0-.41.34-.75.75-.75h.5c.41 0 .75.34.75.75V9.5A3 3 0 0 0 7.5 12.5h1A3 3 0 0 0 11.5 9.5V7.25c0-.41.34-.75.75-.75h.5c.41 0 .75.34.75.75V9.5A4.5 4.5 0 0 1 8.5 14h-1A4.5 4.5 0 0 1 2.5 9.5V7.25z"/>
-    <path d="M5.75 1.75h4.5c.41 0 .75.34.75.75v5c0 .41-.34.75-.75.75h-4.5a.75.75 0 0 1-.75-.75v-5c0-.41.34-.75.75-.75zm.9 1.5v.85h2.7v-.85h-2.7zm0 1.7v.85h2.7v-.85h-2.7z"/>
-  </g>
-</svg>

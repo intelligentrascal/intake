@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- IN-08 denser 16pt TEMPLATE — Paused. Same cradle; doc replaced by two thick pause bars. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <g fill="#000">
+    <!-- Pause bars (primary differentiator at 16pt — not subtle slots in a doc) -->
+    <rect x="5.1" y="1.5" width="2.15" height="7.6" rx="0.85"/>
+    <rect x="8.75" y="1.5" width="2.15" height="7.6" rx="0.85"/>
+    <!-- Cradle — identical to Watching -->
+    <path d="M1.75 8.1c0-.48.39-.87.87-.87h.95c.48 0 .87.39.87.87v1.55A3.5 3.5 0 0 0 7.9 13.15h.2a3.5 3.5 0 0 0 3.46-3.5V8.1c0-.48.39-.87.87-.87h.95c.48 0 .87.39.87.87v1.55A5.25 5.25 0 0 1 8.1 14.9H7.9A5.25 5.25 0 0 1 1.75 9.65V8.1z"/>
+  </g>
+</svg>

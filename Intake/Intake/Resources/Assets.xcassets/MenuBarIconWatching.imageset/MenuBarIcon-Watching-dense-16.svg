@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- IN-08 denser 16pt TEMPLATE — Watching. Soft-catch: thick U cradle + solid doc.
+     Black only, transparent bg. isTemplate=true. Designed for dual-display menu bars. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <g fill="#000">
+    <!-- Doc — larger, fewer interior holes -->
+    <path d="M5 1.25h6c.69 0 1.25.56 1.25 1.25v6.25c0 .69-.56 1.25-1.25 1.25H5c-.69 0-1.25-.56-1.25-1.25V2.5c0-.69.56-1.25 1.25-1.25zm1.15 2.1v1.15h3.7V3.35h-3.7zm0 2.35v1.15h2.6V5.7h-2.6z"/>
+    <!-- Cradle — thicker arms, sits lower, more ink -->
+    <path d="M1.75 8.1c0-.48.39-.87.87-.87h.95c.48 0 .87.39.87.87v1.55A3.5 3.5 0 0 0 7.9 13.15h.2a3.5 3.5 0 0 0 3.46-3.5V8.1c0-.48.39-.87.87-.87h.95c.48 0 .87.39.87.87v1.55A5.25 5.25 0 0 1 8.1 14.9H7.9A5.25 5.25 0 0 1 1.75 9.65V8.1z"/>
+  </g>
+</svg>
