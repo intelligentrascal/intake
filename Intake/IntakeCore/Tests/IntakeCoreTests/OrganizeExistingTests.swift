@@ -69,7 +69,7 @@ struct OrganizeExistingScannerTests {
         try fileManager.createDirectory(at: customFolder, withIntermediateDirectories: true)
         try Data("nope".utf8).write(to: customFolder.appendingPathComponent("inside.txt"))
 
-        let scan = OrganizeExistingScanner(watchFolder: root, fileManager: fileManager).scan()
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         let eligibleNames = Set(scan.eligible.map(\.lastPathComponent))
         let skippedNames = Set(scan.skipped.map(\.lastPathComponent))
 
@@ -92,7 +92,7 @@ struct OrganizeExistingScannerTests {
         try Data("store".utf8).write(to: root.appendingPathComponent(".DS_Store"))
         try Data("unconfirmed".utf8).write(to: root.appendingPathComponent("Unconfirmed 999.crdownload"))
 
-        let scan = OrganizeExistingScanner(watchFolder: root, fileManager: fileManager).scan()
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         #expect(scan.eligible.map(\.lastPathComponent) == ["Invoice.pdf"])
         #expect(
             Set(scan.skipped.map(\.lastPathComponent))
@@ -118,7 +118,7 @@ struct OrganizeExistingScannerTests {
         }
         try Data("loose".utf8).write(to: root.appendingPathComponent("notes.md"))
 
-        let scan = OrganizeExistingScanner(watchFolder: root, fileManager: fileManager).scan()
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         #expect(scan.eligible.map(\.lastPathComponent) == ["notes.md"])
         #expect(scan.skipped.isEmpty)
     }
@@ -151,7 +151,7 @@ struct OrganizeExistingProcessorTests {
         try Data("keep".utf8).write(to: alreadyFiled)
 
         let processor = OrganizeExistingProcessor(watchFolder: root)
-        let scan = OrganizeExistingScanner(watchFolder: root, fileManager: fileManager).scan()
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         let result = processor.process(
             urls: scan.eligible,
             alreadySkipped: scan.skipped.count,
@@ -195,7 +195,7 @@ struct OrganizeExistingProcessorTests {
         try Data("partial".utf8).write(to: partial)
         try Data("ready".utf8).write(to: ready)
 
-        let scan = OrganizeExistingScanner(watchFolder: root, fileManager: fileManager).scan()
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         let processor = OrganizeExistingProcessor(watchFolder: root)
         let result = processor.process(
             urls: scan.eligible,

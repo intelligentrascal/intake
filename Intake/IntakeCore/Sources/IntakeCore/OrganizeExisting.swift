@@ -53,21 +53,18 @@ public struct OrganizeExistingSummary: Equatable, Sendable {
 public struct OrganizeExistingScanner: Sendable {
     public var watchFolder: URL
     public var ignorePolicy: DownloadIgnorePolicy
-    public var fileManager: FileManager
 
     public init(
         watchFolder: URL,
-        ignorePolicy: DownloadIgnorePolicy = DownloadIgnorePolicy(),
-        fileManager: FileManager = .default
+        ignorePolicy: DownloadIgnorePolicy = DownloadIgnorePolicy()
     ) {
         self.watchFolder = watchFolder
         self.ignorePolicy = ignorePolicy
-        self.fileManager = fileManager
     }
 
     /// Lists **root-only** files. Directories (including Intake-managed category
     /// folders) are not entered, so filed items are left alone.
-    public func scan() -> OrganizeExistingScan {
+    public func scan(fileManager: FileManager = .default) -> OrganizeExistingScan {
         let root = watchFolder.standardizedFileURL
         let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey]
         let items = (try? fileManager.contentsOfDirectory(
