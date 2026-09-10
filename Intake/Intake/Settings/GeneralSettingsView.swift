@@ -51,19 +51,34 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Catch up")
             } footer: {
-                Text("Rename and file loose items already in the watch folder root. Files in category folders are left alone. Allowed while paused; does not resume watching.")
+                Text("Rename and file loose items already in the watch folder root. Files in category folders are left alone. Allowed when Automatic organizing is off; does not turn watching back on.")
             }
             Section {
-                Toggle("Pause organizing", isOn: Binding(
-                    get: { model.isPaused },
-                    set: { model.setPaused($0) }
-                ))
+                Toggle(
+                    "Automatic organizing",
+                    isOn: Binding(
+                        get: { model.automaticOrganizing },
+                        set: { model.setAutomaticOrganizing($0) }
+                    )
+                )
+                Picker("Wait before organizing", selection: Binding(
+                    get: { model.organizingWait },
+                    set: { model.setOrganizingWait($0) }
+                )) {
+                    ForEach(OrganizingWait.allCases) { wait in
+                        Text(wait.title).tag(wait)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(!model.automaticOrganizing)
                 Toggle("Open at login", isOn: Binding(
                     get: { model.launchAtLoginEnabled },
                     set: { model.setLaunchAtLogin($0) }
                 ))
             } header: {
                 Text("Organizing")
+            } footer: {
+                Text("New downloads stay in the folder until this time has passed, so you can open them before Intake files them.")
             }
             Section {
                 Toggle(
@@ -83,10 +98,9 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Appearance in macOS")
             } footer: {
-                Text("Keep Intake in the Dock so it’s easy to open Activity. The menu bar shows status and pause/resume without opening a window.")
+                Text("Keep Intake in the Dock so it’s easy to open Settings. The menu bar shows status without opening a window.")
             }
         }
         .formStyle(.grouped)
-        .padding()
     }
 }

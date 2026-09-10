@@ -4,7 +4,7 @@
 
 Free and open source. Private by design: watching and organizing stay on your Mac.
 
-> Status: Native macOS SwiftUI app — Dock + menu bar, Activity primary window, Settings, live Downloads watcher, Organize Existing, and Cleanup.
+> Status: Native macOS SwiftUI app — Dock + menu bar, Settings as the Dock/launch window, Activity audit trail, live Downloads watcher with Wait before organizing, editable rules, Organize Existing, and Cleanup.
 
 ## What it does
 
@@ -12,7 +12,7 @@ Free and open source. Private by design: watching and organizing stay on your Ma
 2. **Rename** new downloads to something human-readable (Arc-style clarity)
 3. **Route** by rules into lazy folders (`Documents`, `Presentations`, `Images`, …)
 4. **Cleanup** — untouched files past a duration show up for File away / Delete / Keep
-5. **Optional AI** (later) — mix local Ollama and optional Claude / Cursor / Codex CLIs for suggestions when rules aren’t enough
+5. **Optional AI** — OpenRouter when enabled (Keychain); Ollama / Claude / Cursor / Codex CLIs stay later. Off by default.
 
 ## Design
 

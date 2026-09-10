@@ -28,14 +28,13 @@ struct AboutSettingsView: View {
                 Text("Links")
             }
             Section {
-                Text("Watching, renaming, and filing stay on this Mac. AI assist is opt-in and off by default.")
+                Text("Watching, renaming, and filing stay on this Mac. Rule suggestions are computed on-device from Activity and the watch folder. AI assist is opt-in, off by default, and uses OpenRouter only when you enable it — file contents are not uploaded.")
                     .foregroundStyle(.secondary)
             } header: {
                 Text("Privacy")
             }
         }
         .formStyle(.grouped)
-        .padding()
     }
 
     private var versionString: String {

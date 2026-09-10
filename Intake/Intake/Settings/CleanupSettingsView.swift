@@ -36,7 +36,6 @@ struct CleanupSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
         .onAppear {
             model.scanCleanupCandidates()
         }

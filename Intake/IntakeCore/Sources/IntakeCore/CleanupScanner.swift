@@ -6,19 +6,22 @@ public struct CleanupScanner: Sendable {
     public var includeWatchRoot: Bool
     public var snoozedUntil: [String: Date]
     public var ignorePolicy: DownloadIgnorePolicy
+    public var managedFolderNames: Set<String>
 
     public init(
         watchFolder: URL,
         thresholdDays: Int,
         includeWatchRoot: Bool,
         snoozedUntil: [String: Date] = [:],
-        ignorePolicy: DownloadIgnorePolicy = DownloadIgnorePolicy()
+        ignorePolicy: DownloadIgnorePolicy = DownloadIgnorePolicy(),
+        managedFolderNames: Set<String> = DefaultTaxonomy.managedFolderNames
     ) {
         self.watchFolder = watchFolder
         self.thresholdDays = thresholdDays
         self.includeWatchRoot = includeWatchRoot
         self.snoozedUntil = snoozedUntil
         self.ignorePolicy = ignorePolicy
+        self.managedFolderNames = managedFolderNames
     }
 
     public func candidates(
@@ -86,7 +89,7 @@ public struct CleanupScanner: Sendable {
         if includeWatchRoot {
             urls.append(contentsOf: files(in: watchFolder, fileManager: fileManager))
         }
-        for name in DefaultTaxonomy.managedFolderNames.sorted() {
+        for name in managedFolderNames.sorted() {
             let folder = watchFolder.appendingPathComponent(name, isDirectory: true)
             var isDirectory: ObjCBool = false
             guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDirectory),
