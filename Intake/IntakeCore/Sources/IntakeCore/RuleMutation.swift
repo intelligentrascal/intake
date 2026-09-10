@@ -3,7 +3,12 @@ import Foundation
 public enum RuleMutation: Sendable {
     public static func moving(_ rules: [RoutingRule], from source: IndexSet, to destination: Int) -> [RoutingRule] {
         var next = rules
-        next.move(fromOffsets: source, toOffset: destination)
+        let extracted = source.sorted().map { next[$0] }
+        for index in source.sorted().reversed() {
+            next.remove(at: index)
+        }
+        let removedBeforeDestination = source.filter { $0 < destination }.count
+        next.insert(contentsOf: extracted, at: destination - removedBeforeDestination)
         return next
     }
 
