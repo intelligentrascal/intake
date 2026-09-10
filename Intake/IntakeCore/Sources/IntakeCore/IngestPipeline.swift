@@ -4,6 +4,7 @@ public struct IngestPlan: Equatable, Sendable {
     public var sourceURL: URL
     public var renamedFileName: String
     public var category: FileCategory
+    public var destinationFolderName: String
     public var destinationDirectory: URL
     public var destinationURL: URL
 
@@ -40,9 +41,11 @@ public struct IngestPipeline: Sendable {
             fileName: normalizer.proposedFileName(for: sourceURL),
             among: existingNamesInDestination
         )
-        let category = DefaultTaxonomy.category(for: sourceURL, rules: rules)
+        let match = DefaultTaxonomy.matchingRule(for: sourceURL, rules: rules)
+        let category = match?.category ?? .other
+        let destinationFolderName = match?.folderName ?? FileCategory.other.folderName
         let destinationDirectory = watchFolder.appendingPathComponent(
-            category.folderName,
+            destinationFolderName,
             isDirectory: true
         )
         let destinationURL = destinationDirectory.appendingPathComponent(
@@ -53,6 +56,7 @@ public struct IngestPipeline: Sendable {
             sourceURL: sourceURL,
             renamedFileName: renamed,
             category: category,
+            destinationFolderName: destinationFolderName,
             destinationDirectory: destinationDirectory,
             destinationURL: destinationURL
         )
@@ -105,10 +109,10 @@ public struct IngestPipeline: Sendable {
             ActivityEntry(
                 date: now,
                 kind: .moved,
-                detail: "Moved \(destination.lastPathComponent) to \(plan.category.folderName)",
+                detail: "Moved \(destination.lastPathComponent) to \(plan.destinationFolderName)",
                 url: destination,
                 fileName: destination.lastPathComponent,
-                destinationFolder: plan.category.folderName
+                destinationFolder: plan.destinationFolderName
             )
         )
         return entries

@@ -15,7 +15,7 @@ public enum OrganizeExistingCopy: Sendable {
         "Intake will rename and file items sitting in the watch folder root using your current rules. Files already in category folders are left alone. You can follow every change in Activity."
 
     public static let pausedOneShotNote =
-        "Watching is paused. This one-shot still runs and does not resume the watcher."
+        "Automatic organizing is off. This one-shot still runs and does not turn watching back on."
 }
 
 public struct OrganizeExistingScan: Equatable, Sendable {
@@ -166,7 +166,8 @@ public struct OrganizeExistingProcessor: Sendable {
         )
     }
 
-    /// Same rename → route → Activity path as live ingest.
+    /// Same rename → route → Activity path as live ingest, **without**
+    /// Wait before organizing. Manual catch-up files immediately.
     public func processOne(
         _ url: URL,
         fileManager: FileManager = .default,

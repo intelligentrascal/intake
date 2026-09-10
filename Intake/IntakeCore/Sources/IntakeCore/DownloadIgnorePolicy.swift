@@ -18,7 +18,11 @@ public struct DownloadIgnorePolicy: Sendable, Equatable {
         "downloading",
     ]
 
-    public init() {}
+    public var managedFolderNames: Set<String>
+
+    public init(managedFolderNames: Set<String> = DefaultTaxonomy.managedFolderNames) {
+        self.managedFolderNames = managedFolderNames
+    }
 
     public func shouldIgnore(url: URL, kind: FileEventKind, isDirectory: Bool) -> Bool {
         if kind == .metadataOnly || kind == .removed {
@@ -32,7 +36,7 @@ public struct DownloadIgnorePolicy: Sendable, Equatable {
         if name.hasPrefix(".") || name == "Icon\r" {
             return true
         }
-        if DefaultTaxonomy.managedFolderNames.contains(name) {
+        if managedFolderNames.contains(name) {
             return true
         }
 

@@ -4,7 +4,7 @@ import IntakeCore
 
 nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
     private let queue = DispatchQueue(label: "app.intake.watcher")
-    private let policy = DownloadIgnorePolicy()
+    private var policy = DownloadIgnorePolicy()
     private var descriptor: Int32 = -1
     private var source: DispatchSourceFileSystemObject?
     private var debounce: DispatchWorkItem?
@@ -13,10 +13,15 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
     private var pending: [String: FileStabilitySnapshot] = [:]
     private var onStable: ((URL) -> Void)?
 
-    func start(folder: URL, onStableFile: @escaping (URL) -> Void) {
+    func start(
+        folder: URL,
+        ignorePolicy: DownloadIgnorePolicy = DownloadIgnorePolicy(),
+        onStableFile: @escaping (URL) -> Void
+    ) {
         stop()
         queue.sync {
             self.folder = folder
+            self.policy = ignorePolicy
             self.onStable = onStableFile
             self.knownNames = self.currentRootNames(in: folder)
             self.pending.removeAll()
@@ -40,6 +45,12 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
             }
             self.source = src
             src.resume()
+        }
+    }
+
+    func updateIgnorePolicy(_ ignorePolicy: DownloadIgnorePolicy) {
+        queue.async {
+            self.policy = ignorePolicy
         }
     }
 

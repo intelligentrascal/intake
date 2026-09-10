@@ -8,13 +8,26 @@ import IntakeCore
 @Observable
 @MainActor
 final class AppModel {
+    var automaticOrganizing: Bool {
+        didSet { AutomaticOrganizingPreference.persist(automaticOrganizing, to: .standard) }
+    }
+
+    var organizingWait: OrganizingWait {
+        didSet {
+            OrganizingWait.persist(organizingWait, to: .standard)
+            reevaluateWaitingForAge()
+        }
+    }
+
     var isPaused: Bool {
-        didSet { UserDefaults.standard.set(isPaused, forKey: SettingsKey.paused) }
+        !automaticOrganizing
     }
 
     var watchFolder: URL {
         didSet {
             arrivedWhilePaused.removeAll()
+            waitingForAge.removeAll()
+            ageGateTask?.cancel()
             persistWatchFolderBookmark()
         }
     }
@@ -23,6 +36,24 @@ final class AppModel {
     var rules: [RoutingRule] {
         didSet { persistRules() }
     }
+
+    var ruleSuggestions: [RuleSuggestion] = []
+    var suggestionMemory: SuggestionMemory {
+        didSet { persistSuggestionMemory() }
+    }
+
+    var pendingAISuggestions: [PendingAISuggestion] = []
+    var openRouterEnabled: Bool {
+        didSet { UserDefaults.standard.set(openRouterEnabled, forKey: SettingsKey.openRouterEnabled) }
+    }
+    var openRouterBaseURL: String {
+        didSet { UserDefaults.standard.set(openRouterBaseURL, forKey: SettingsKey.openRouterBaseURL) }
+    }
+    var openRouterModel: String {
+        didSet { UserDefaults.standard.set(openRouterModel, forKey: SettingsKey.openRouterModel) }
+    }
+    var openRouterStatusMessage: String?
+    var openRouterRequestCount = 0
 
     var activity: [ActivityEntry] {
         didSet { persistActivity() }
@@ -105,6 +136,10 @@ final class AppModel {
     @ObservationIgnored
     private var arrivedWhilePaused: [URL] = []
     @ObservationIgnored
+    private var waitingForAge: [PendingStableFile] = []
+    @ObservationIgnored
+    private var ageGateTask: Task<Void, Never>?
+    @ObservationIgnored
     private var arrivedDuringOrganize: [URL] = []
     @ObservationIgnored
     private var pendingOrganizeScan: OrganizeExistingScan?
@@ -115,16 +150,24 @@ final class AppModel {
 
     init() {
         let defaults = UserDefaults.standard
-        isPaused = defaults.object(forKey: SettingsKey.paused) as? Bool ?? false
+        automaticOrganizing = AutomaticOrganizingPreference.isEnabled(in: defaults)
+        AutomaticOrganizingPreference.persist(automaticOrganizing, to: defaults)
+        organizingWait = OrganizingWait.load(from: defaults)
         cleanupThresholdDays = defaults.object(forKey: SettingsKey.cleanupDays) as? Int ?? 30
         includeWatchRootInCleanup = defaults.object(forKey: SettingsKey.includeRoot) as? Bool ?? true
         aiSuggestionsEnabled = defaults.bool(forKey: SettingsKey.aiSuggestions)
+        openRouterEnabled = defaults.bool(forKey: SettingsKey.openRouterEnabled)
+        openRouterBaseURL = defaults.string(forKey: SettingsKey.openRouterBaseURL)
+            ?? OpenRouterConfiguration.defaultBaseURL
+        openRouterModel = defaults.string(forKey: SettingsKey.openRouterModel)
+            ?? OpenRouterConfiguration.defaultModel
         showsInDock = defaults.object(forKey: SettingsKey.showDock) as? Bool ?? true
         showsInMenuBar = defaults.object(forKey: SettingsKey.showMenuBar) as? Bool ?? true
         selectedSettingsPane = SettingsPane(
             rawValue: defaults.string(forKey: SettingsKey.settingsPane) ?? ""
         ) ?? .general
         rules = Self.loadRules()
+        suggestionMemory = Self.loadSuggestionMemory()
         activity = Self.loadActivity()
         snoozedUntil = Self.loadSnooze()
         cleanupCandidates = []
@@ -134,6 +177,7 @@ final class AppModel {
         watchFolderBookmarkLost = resolved.lost
         startAccessingWatchFolder()
         restartWatcher()
+        refreshSuggestions()
     }
 
     func applicationDidFinishLaunching() {
@@ -156,13 +200,27 @@ final class AppModel {
         setPaused(!isPaused)
     }
 
+    func setAutomaticOrganizing(_ enabled: Bool) {
+        setPaused(!enabled)
+    }
+
+    func setOrganizingWait(_ wait: OrganizingWait) {
+        organizingWait = wait
+    }
+
     func setPaused(_ paused: Bool) {
         let wasPaused = isPaused
-        isPaused = paused
-        if wasPaused && !paused {
+        automaticOrganizing = !paused
+        if paused {
+            ageGateTask?.cancel()
+            return
+        }
+        if wasPaused {
             let pending = arrivedWhilePaused
             arrivedWhilePaused.removeAll()
-            pending.forEach(handleStableFile)
+            let now = Date()
+            pending.forEach { rememberStable($0, stableAt: now) }
+            reevaluateWaitingForAge()
         }
     }
 
@@ -266,9 +324,15 @@ final class AppModel {
         organizeEligibleTotal = scan.eligible.count
         organizeProcessedCount = 0
         organizeProgressPresented = true
-        let processor = OrganizeExistingProcessor(watchFolder: watchFolder, rules: rules)
+        let processor = OrganizeExistingProcessor(
+            watchFolder: watchFolder,
+            rules: rules,
+            ignorePolicy: ignorePolicy
+        )
         let skippedURLs = scan.skipped
         let files = scan.eligible
+        let eligibleSet = Set(files.map(\.standardizedFileURL))
+        waitingForAge.removeAll { eligibleSet.contains($0.url) }
 
         organizeTask = Task { @MainActor in
             for url in skippedURLs where !url.lastPathComponent.hasPrefix(".") {
@@ -376,11 +440,120 @@ final class AppModel {
                 self.rules.first(where: { $0.id == rule.id })?.isEnabled ?? false
             },
             set: { enabled in
-                if let index = self.rules.firstIndex(where: { $0.id == rule.id }) {
-                    self.rules[index].isEnabled = enabled
-                }
+                self.rules = RuleMutation.settingEnabled(self.rules, id: rule.id, isEnabled: enabled)
             }
         )
+    }
+
+    func moveRules(from source: IndexSet, to destination: Int) {
+        rules = RuleMutation.moving(rules, from: source, to: destination)
+    }
+
+    func saveRule(id: String?, folderName: String, extensions: Set<String>, isEnabled: Bool) {
+        if let id {
+            rules = RuleMutation.updating(
+                rules,
+                id: id,
+                folderName: folderName,
+                extensions: extensions,
+                isEnabled: isEnabled
+            )
+        } else {
+            rules = RuleMutation.addingCustom(
+                rules,
+                folderName: folderName,
+                extensions: extensions,
+                isEnabled: isEnabled
+            )
+        }
+    }
+
+    func deleteCustomRule(id: String) {
+        rules = RuleMutation.deletingCustom(rules, id: id)
+    }
+
+    func resetBuiltInRule(id: String) {
+        rules = RuleMutation.resettingBuiltIn(rules, id: id)
+    }
+
+    func acceptSuggestion(_ suggestion: RuleSuggestion) {
+        rules = RuleMutation.accepting(suggestion, into: rules)
+        var memory = suggestionMemory
+        memory.dismissedUntil[suggestion.id] = nil
+        suggestionMemory = memory
+        refreshSuggestions()
+    }
+
+    func dismissSuggestion(_ suggestion: RuleSuggestion) {
+        suggestionMemory = suggestionMemory.dismissing(suggestion)
+        refreshSuggestions()
+    }
+
+    func neverSuggestion(_ suggestion: RuleSuggestion) {
+        suggestionMemory = suggestionMemory.nevering(suggestion)
+        refreshSuggestions()
+    }
+
+    func resetDismissedSuggestions() {
+        suggestionMemory = SuggestionMemory()
+        refreshSuggestions()
+    }
+
+    func refreshSuggestions() {
+        let histogram = WatchRootHistogram.counts(
+            watchFolder: watchFolder,
+            ignorePolicy: ignorePolicy
+        )
+        ruleSuggestions = RuleSuggestionEngine.suggestions(
+            activity: activity,
+            watchRootHistogram: histogram,
+            rules: rules,
+            memory: suggestionMemory
+        )
+    }
+
+    var ruleConflicts: [RuleConflict] {
+        RuleConflict.inRules(rules)
+    }
+
+    var managedFolderNames: Set<String> {
+        DefaultTaxonomy.managedFolderNames(from: rules)
+    }
+
+    var ignorePolicy: DownloadIgnorePolicy {
+        DownloadIgnorePolicy(managedFolderNames: managedFolderNames)
+    }
+
+    var openRouterConfiguration: OpenRouterConfiguration {
+        OpenRouterConfiguration(baseURL: openRouterBaseURL, model: openRouterModel)
+    }
+
+    var canCallOpenRouter: Bool {
+        aiSuggestionsEnabled && openRouterEnabled && OpenRouterKeychain.hasKey
+    }
+
+    func acceptAISuggestion(_ suggestion: PendingAISuggestion) {
+        pendingAISuggestions.removeAll { $0.id == suggestion.id }
+        let synthetic = RuleSuggestion(
+            id: "ai:\(suggestion.fileExtension)",
+            title: suggestion.proposedFolder,
+            subtitle: suggestion.reason,
+            extensions: [suggestion.fileExtension],
+            proposedFolderName: suggestion.proposedFolder,
+            systemImage: "sparkles",
+            targetRuleID: rules.first {
+                $0.folderName.compare(suggestion.proposedFolder, options: .caseInsensitive) == .orderedSame
+            }?.id,
+            hitCount: 1
+        )
+        rules = RuleMutation.accepting(synthetic, into: rules)
+        if let url = suggestion.url {
+            refile(url, toFolder: suggestion.proposedFolder)
+        }
+    }
+
+    func dismissAISuggestion(_ suggestion: PendingAISuggestion) {
+        pendingAISuggestions.removeAll { $0.id == suggestion.id }
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -403,29 +576,146 @@ final class AppModel {
         }
     }
 
-    func handleStableFile(_ url: URL) {
+    func handleStableFile(_ url: URL, stableAt: Date = Date()) {
         if isOrganizingExisting {
             arrivedDuringOrganize.append(url)
             return
         }
+        rememberStable(url, stableAt: stableAt)
         if isPaused {
+            arrivedWhilePaused.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
             arrivedWhilePaused.append(url)
             return
         }
-        applyIngest(url)
+        reevaluateWaitingForAge()
+    }
+
+    private func rememberStable(_ url: URL, stableAt: Date) {
+        let standardized = url.standardizedFileURL
+        if waitingForAge.contains(where: { $0.url == standardized }) {
+            return
+        }
+        waitingForAge.append(PendingStableFile(url: standardized, stableAt: stableAt))
+    }
+
+    private func reevaluateWaitingForAge() {
+        ageGateTask?.cancel()
+        ageGateTask = nil
+        guard automaticOrganizing else { return }
+
+        let partitioned = FileAgeGate.partition(
+            pending: waitingForAge,
+            wait: organizingWait
+        )
+        waitingForAge = partitioned.waiting
+        for item in partitioned.ready {
+            applyIngest(item.url)
+        }
+
+        guard let next = waitingForAge.min(by: { $0.stableAt < $1.stableAt }) else { return }
+        let delay = FileAgeGate.delayUntilEligible(stableAt: next.stableAt, wait: organizingWait)
+        ageGateTask = Task { @MainActor in
+            let nanoseconds = UInt64(max(delay, 0.05) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            guard !Task.isCancelled else { return }
+            self.reevaluateWaitingForAge()
+        }
     }
 
     private func applyIngest(_ url: URL) {
-        let processor = OrganizeExistingProcessor(watchFolder: watchFolder, rules: rules)
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let processor = OrganizeExistingProcessor(
+            watchFolder: watchFolder,
+            rules: rules,
+            ignorePolicy: ignorePolicy
+        )
         switch processor.processOne(url) {
         case .organized(let entries):
             entries.reversed().forEach(record)
+            requestOpenRouterIfNeeded(entries: entries)
         case .skipped(let entry):
             record(entry)
         case .error(let entry):
             record(entry)
         case .notInWatchRoot:
             break
+        }
+    }
+
+    private func requestOpenRouterIfNeeded(entries: [ActivityEntry]) {
+        guard aiSuggestionsEnabled, openRouterEnabled else { return }
+        guard let moved = entries.first(where: {
+            $0.kind == .moved && $0.destinationFolder == FileCategory.other.folderName
+        }) else {
+            return
+        }
+        let fileName = moved.fileName
+        let ext = URL(fileURLWithPath: fileName).pathExtension.lowercased()
+        guard !ext.isEmpty else { return }
+        let apiKey = OpenRouterKeychain.load() ?? ""
+        guard !apiKey.isEmpty else {
+            openRouterStatusMessage = OpenRouterFailure.missingKey.userMessage
+            return
+        }
+        let folders = rules.map(\.folderName)
+        let configuration = openRouterConfiguration
+        let destination = moved.url
+        openRouterRequestCount += 1
+        Task { @MainActor in
+            let result = await OpenRouterClient.suggestFolder(
+                fileName: fileName,
+                folders: folders,
+                apiKey: apiKey,
+                configuration: configuration
+            )
+            switch result {
+            case .success(let suggestion):
+                self.openRouterStatusMessage = nil
+                self.pendingAISuggestions.insert(
+                    PendingAISuggestion(
+                        fileName: fileName,
+                        url: destination,
+                        fileExtension: ext,
+                        proposedFolder: suggestion.folderName,
+                        reason: suggestion.reason
+                    ),
+                    at: 0
+                )
+            case .failure(let failure):
+                self.openRouterStatusMessage = failure.userMessage
+            }
+        }
+    }
+
+    private func refile(_ url: URL, toFolder folderName: String) {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        let destDir = watchFolder.appendingPathComponent(folderName, isDirectory: true)
+        do {
+            try fileManager.createDirectory(at: destDir, withIntermediateDirectories: true)
+            let existing = Set((try? fileManager.contentsOfDirectory(atPath: destDir.path)) ?? [])
+            let unique = IngestPipeline.uniqued(fileName: url.lastPathComponent, among: existing)
+            let destination = destDir.appendingPathComponent(unique, isDirectory: false)
+            try fileManager.moveItem(at: url, to: destination)
+            record(
+                ActivityEntry(
+                    kind: .moved,
+                    detail: "Moved \(destination.lastPathComponent) to \(folderName)",
+                    url: destination,
+                    fileName: destination.lastPathComponent,
+                    destinationFolder: folderName
+                )
+            )
+            pruneEmptyManagedFolders()
+        } catch {
+            record(
+                ActivityEntry(
+                    kind: .error,
+                    detail: "Could not file \(url.lastPathComponent): \(error.localizedDescription)",
+                    url: url,
+                    fileName: url.lastPathComponent
+                )
+            )
         }
     }
 
@@ -442,14 +732,19 @@ final class AppModel {
             watchFolder: watchFolder,
             thresholdDays: cleanupThresholdDays,
             includeWatchRoot: includeWatchRootInCleanup,
-            snoozedUntil: snoozedUntil
+            snoozedUntil: snoozedUntil,
+            ignorePolicy: ignorePolicy,
+            managedFolderNames: managedFolderNames
         ).candidates()
     }
 
     func fileAway(_ candidate: CleanupCandidate) {
         guard let directory = DestinationFolderPicker.present(startingAt: watchFolder) else { return }
         do {
-            let entry = try CleanupProcessor(watchFolder: watchFolder).fileAway(candidate, to: directory)
+            let entry = try CleanupProcessor(
+                watchFolder: watchFolder,
+                managedFolderNames: managedFolderNames
+            ).fileAway(candidate, to: directory)
             record(entry)
             pruneEmptyManagedFolders()
             scanCleanupCandidates()
@@ -506,13 +801,16 @@ final class AppModel {
     }
 
     private func pruneEmptyManagedFolders() {
-        let entries = CleanupProcessor(watchFolder: watchFolder).removeEmptyManagedFolders()
+        let entries = CleanupProcessor(
+            watchFolder: watchFolder,
+            managedFolderNames: managedFolderNames
+        ).removeEmptyManagedFolders()
         entries.reversed().forEach(record)
     }
 
     private func restartWatcher() {
         watcher.stop()
-        watcher.start(folder: watchFolder) { [weak self] url in
+        watcher.start(folder: watchFolder, ignorePolicy: ignorePolicy) { [weak self] url in
             Task { @MainActor in
                 self?.handleStableFile(url)
             }
@@ -530,10 +828,21 @@ final class AppModel {
     }
 
     private func persistRules() {
+        if let data = try? RulePersistence.encode(rules) {
+            UserDefaults.standard.set(data, forKey: SettingsKey.rules)
+        }
         UserDefaults.standard.set(
             RulePersistence.enabledByCategory(from: rules),
             forKey: SettingsKey.ruleEnabled
         )
+        watcher.updateIgnorePolicy(ignorePolicy)
+        refreshSuggestions()
+    }
+
+    private func persistSuggestionMemory() {
+        if let data = try? SuggestionMemoryPersistence.encode(suggestionMemory) {
+            UserDefaults.standard.set(data, forKey: SettingsKey.suggestionMemory)
+        }
     }
 
     private func persistSnooze() {
@@ -580,8 +889,19 @@ final class AppModel {
     }
 
     private static func loadRules() -> [RoutingRule] {
-        let flags = UserDefaults.standard.dictionary(forKey: SettingsKey.ruleEnabled) as? [String: Bool] ?? [:]
-        return RulePersistence.applying(flags, to: DefaultTaxonomy.rules)
+        let defaults = UserDefaults.standard
+        let flags = defaults.dictionary(forKey: SettingsKey.ruleEnabled) as? [String: Bool] ?? [:]
+        return RulePersistence.load(
+            storedRules: defaults.data(forKey: SettingsKey.rules),
+            enabledByCategory: flags
+        )
+    }
+
+    private static func loadSuggestionMemory() -> SuggestionMemory {
+        guard let data = UserDefaults.standard.data(forKey: SettingsKey.suggestionMemory) else {
+            return SuggestionMemory()
+        }
+        return (try? SuggestionMemoryPersistence.decode(data)) ?? SuggestionMemory()
     }
 
     private static func loadActivity() -> [ActivityEntry] {
@@ -598,7 +918,8 @@ final class AppModel {
 }
 
 private enum SettingsKey {
-    static let paused = "intake.paused"
+    static let paused = AutomaticOrganizingPreference.legacyPausedKey
+    static let automaticOrganizing = AutomaticOrganizingPreference.currentKey
     static let cleanupDays = "intake.cleanupDays"
     static let includeRoot = "intake.includeWatchRoot"
     static let aiSuggestions = "intake.aiSuggestions"
@@ -608,6 +929,11 @@ private enum SettingsKey {
     static let settingsPane = "intake.settingsPane"
     static let activity = "intake.activity"
     static let ruleEnabled = "intake.ruleEnabled"
+    static let rules = "intake.rules"
+    static let suggestionMemory = "intake.suggestionMemory"
     static let cleanupSnooze = "intake.cleanupSnooze"
     static let didShowMenuBarTip = "intake.didShowMenuBarTip"
+    static let openRouterEnabled = "intake.openRouterEnabled"
+    static let openRouterBaseURL = "intake.openRouterBaseURL"
+    static let openRouterModel = "intake.openRouterModel"
 }

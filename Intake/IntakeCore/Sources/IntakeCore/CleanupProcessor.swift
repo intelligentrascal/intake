@@ -8,9 +8,14 @@ public struct CleanupProcessor: Sendable {
     ]
 
     public var watchFolder: URL
+    public var managedFolderNames: Set<String>
 
-    public init(watchFolder: URL) {
+    public init(
+        watchFolder: URL,
+        managedFolderNames: Set<String> = DefaultTaxonomy.managedFolderNames
+    ) {
         self.watchFolder = watchFolder
+        self.managedFolderNames = managedFolderNames
     }
 
     public func fileAway(
@@ -56,7 +61,7 @@ public struct CleanupProcessor: Sendable {
         fileManager: FileManager = .default,
         now: Date = Date()
     ) -> [ActivityEntry] {
-        DefaultTaxonomy.managedFolderNames.sorted().compactMap { name in
+        managedFolderNames.sorted().compactMap { name in
             let folder = watchFolder.appendingPathComponent(name, isDirectory: true)
             guard isEmptyManagedFolder(folder, fileManager: fileManager) else {
                 return nil

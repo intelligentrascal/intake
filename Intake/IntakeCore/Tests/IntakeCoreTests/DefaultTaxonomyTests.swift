@@ -81,4 +81,16 @@ struct DefaultTaxonomyTests {
             #expect(categories.contains(category))
         }
     }
+
+    @Test
+    func customFolderNamesJoinTheManagedSet() {
+        let rules = RuleMutation.addingCustom(
+            DefaultTaxonomy.rules,
+            folderName: "Design",
+            extensions: ["psd"]
+        )
+        let names = DefaultTaxonomy.managedFolderNames(from: rules)
+        #expect(names.contains("Design"))
+        #expect(names.contains("Documents"))
+    }
 }

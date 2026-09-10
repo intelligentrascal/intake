@@ -6,11 +6,10 @@ struct ActivitySettingsView: View {
             Section {
                 ActivityPaneBody()
             } footer: {
-                Text("The Activity window is Intake’s home. Double-click a row to reveal it in Finder, or use Reveal in Finder.")
+                Text("Activity is an audit trail, not the Dock default. Open it from the menu bar or General. Double-click a row to reveal it in Finder, or use Reveal in Finder.")
             }
         }
         .formStyle(.grouped)
-        .padding()
     }
 }
 

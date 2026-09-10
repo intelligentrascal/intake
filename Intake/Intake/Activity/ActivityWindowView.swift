@@ -7,18 +7,30 @@ struct ActivityWindowView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
-            if model.activity.isEmpty {
-                ContentUnavailableView(
-                    "No activity yet",
-                    systemImage: "list.bullet.clipboard",
-                    description: Text("When Intake renames or files a download, it shows up here.")
-                )
-            } else {
-                ActivityListView()
+        VStack(spacing: 0) {
+            if !model.pendingAISuggestions.isEmpty {
+                AISuggestionList()
+            }
+            Group {
+                if model.activity.isEmpty {
+                    ContentUnavailableView(
+                        "No activity yet",
+                        systemImage: "list.bullet.clipboard",
+                        description: Text("When Intake renames or files a download, it shows up here.")
+                    )
+                } else {
+                    ActivityListView()
+                }
             }
         }
         .frame(minWidth: 520, minHeight: 420)
+        .background {
+            ZStack {
+                IntakeMeshBackground(style: .activity, animated: !reduceMotion)
+                Rectangle()
+                    .fill(.background.opacity(0.32))
+            }
+        }
         .background(ActivityWindowConfigurator())
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -38,6 +50,39 @@ struct ActivityWindowView: View {
     }
 }
 
+private struct AISuggestionList: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(model.pendingAISuggestions) { suggestion in
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "sparkles")
+                        .symbolRenderingMode(.hierarchical)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Move \(suggestion.fileName) to \(suggestion.proposedFolder)?")
+                        Text(suggestion.reason)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Accept") {
+                        model.acceptAISuggestion(suggestion)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button("Dismiss") {
+                        model.dismissAISuggestion(suggestion)
+                    }
+                }
+                .padding(12)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .padding(12)
+    }
+}
+
 struct ActivityListView: View {
     @Environment(AppModel.self) private var model
     @State private var selection: ActivityEntry.ID?
@@ -47,6 +92,7 @@ struct ActivityListView: View {
             ForEach(model.activity) { entry in
                 ActivityRow(entry: entry)
                     .tag(entry.id)
+                    .listRowBackground(Color.clear)
                     .simultaneousGesture(
                         TapGesture(count: 2).onEnded {
                             selection = entry.id
@@ -69,6 +115,7 @@ struct ActivityListView: View {
             }
         }
         .listStyle(.inset)
+        .scrollContentBackground(.hidden)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Reveal in Finder") {

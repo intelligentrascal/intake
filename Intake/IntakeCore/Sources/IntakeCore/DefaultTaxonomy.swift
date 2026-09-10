@@ -10,16 +10,34 @@ public enum DefaultTaxonomy: Sendable {
         FileCategory.allCases.map(\.folderName)
     )
 
+    public static func managedFolderNames(from rules: [RoutingRule]) -> Set<String> {
+        managedFolderNames.union(Set(rules.map(\.folderName)))
+    }
+
+    public static func matchingRule(
+        forExtension ext: String,
+        rules: [RoutingRule] = rules
+    ) -> RoutingRule? {
+        let key = ext.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return nil }
+        for rule in rules where rule.isEnabled && rule.extensions.contains(key) {
+            return rule
+        }
+        return nil
+    }
+
+    public static func matchingRule(
+        for url: URL,
+        rules: [RoutingRule] = rules
+    ) -> RoutingRule? {
+        matchingRule(forExtension: url.pathExtension, rules: rules)
+    }
+
     public static func category(
         forExtension ext: String,
         rules: [RoutingRule] = rules
     ) -> FileCategory {
-        let key = ext.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return .other }
-        for rule in rules where rule.isEnabled && rule.extensions.contains(key) {
-            return rule.category
-        }
-        return .other
+        matchingRule(forExtension: ext, rules: rules)?.category ?? .other
     }
 
     public static func category(
@@ -27,5 +45,12 @@ public enum DefaultTaxonomy: Sendable {
         rules: [RoutingRule] = rules
     ) -> FileCategory {
         category(forExtension: url.pathExtension, rules: rules)
+    }
+
+    public static func destinationFolderName(
+        forExtension ext: String,
+        rules: [RoutingRule] = rules
+    ) -> String {
+        matchingRule(forExtension: ext, rules: rules)?.folderName ?? FileCategory.other.folderName
     }
 }
