@@ -18,7 +18,8 @@ struct IntakeApp: App {
         }
         .defaultSize(width: 640, height: 520)
         .windowResizability(.contentMinSize)
-        .defaultLaunchBehavior(.automatic)
+        // Activity is not a launch surface. Open via Open Activity / menu / openActivity().
+        .defaultLaunchBehavior(.suppressed)
         .defaultPosition(.center)
         .commands {
             CommandGroup(after: .appSettings) {

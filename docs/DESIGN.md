@@ -32,7 +32,7 @@ General → Organizing, directly under Automatic organizing. Native menu `Picker
 
 ## Activity
 
-SwiftUI `Window("Activity", id: "activity")` — audit trail, not the Dock default. Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Empty: ContentUnavailableView “No activity yet”. Double-click or Reveal in Finder (toolbar or context menu) opens the file; selection alone does not. Context menu: Reveal / Copy path. Persists across launches with a cap.
+SwiftUI `Window("Activity", id: "activity")` with `.defaultLaunchBehavior(.suppressed)` — audit trail, not the Dock default. Launch / Dock reopen still bring **Settings**. Activity opens only via Open Activity / menu / `openActivity()`. Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Empty: ContentUnavailableView “No activity yet”. Double-click or Reveal in Finder (toolbar or context menu) opens the file; selection alone does not. Context menu: Reveal / Copy path. Persists across launches with a cap.
 
 Native **MeshGradient** atmosphere on the Activity background (near-black + `#1D16E9` @ ~34%). Reduce Motion / Increase Contrast / Reduce Transparency → static wash or solid `surface`. Optional faint Settings wash behind the split view. Never React, WKWebView, or Paper web shaders.
 
