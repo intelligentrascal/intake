@@ -1,7 +1,7 @@
 import Foundation
 
-/// Wait after a download is **stable** before live auto-organize files it.
-/// Organize Existing does not use this gate.
+/// Wait after a download is **stable** before live auto-organize **routes** it.
+/// Rename-on-stable is not gated here. Organize Existing does not use this gate.
 public enum OrganizingWait: Int, CaseIterable, Identifiable, Sendable, Codable {
     case immediately = 0
     case fifteenMinutes = 900

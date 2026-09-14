@@ -139,7 +139,7 @@ public struct OrganizeExistingProcessor: Sendable {
                 cancelled = true
                 break
             }
-            switch processOne(url, fileManager: fileManager, now: now) {
+            switch processOne(url, mode: .renameAndRoute, fileManager: fileManager, now: now) {
             case .organized(let produced):
                 organized += 1
                 entries.append(contentsOf: produced)
@@ -166,10 +166,11 @@ public struct OrganizeExistingProcessor: Sendable {
         )
     }
 
-    /// Same rename → route → Activity path as live ingest, **without**
-    /// Wait before organizing. Manual catch-up files immediately.
+    /// Live ingest uses `renameInPlace` then, after Wait, `routeOnly`.
+    /// Organize Existing and Rename-off filing still use `renameAndRoute`.
     public func processOne(
         _ url: URL,
+        mode: IngestApplyMode = .renameAndRoute,
         fileManager: FileManager = .default,
         now: Date = Date()
     ) -> FileResult {
@@ -188,17 +189,31 @@ public struct OrganizeExistingProcessor: Sendable {
         }
 
         let pipeline = IngestPipeline(watchFolder: watchFolder, rules: rules)
-        let planned = pipeline.plan(for: source)
-        guard planned != nil else {
-            return .notInWatchRoot
-        }
-        let existing = existingNames(in: planned?.destinationDirectory, fileManager: fileManager)
-        guard let plan = pipeline.plan(for: source, existingNamesInDestination: existing) else {
+        guard pipeline.plan(for: source) != nil else {
             return .notInWatchRoot
         }
 
         do {
-            let produced = try pipeline.apply(plan, fileManager: fileManager, now: now)
+            let produced: [ActivityEntry]
+            switch mode {
+            case .renameInPlace:
+                produced = try pipeline.applyRenameInPlace(
+                    at: source,
+                    fileManager: fileManager,
+                    now: now
+                ).entries
+            case .routeOnly:
+                produced = try pipeline.applyRoute(
+                    at: source,
+                    fileManager: fileManager,
+                    now: now
+                )
+            case .renameAndRoute:
+                guard let plan = pipeline.plan(for: source) else {
+                    return .notInWatchRoot
+                }
+                produced = try pipeline.apply(plan, fileManager: fileManager, now: now)
+            }
             return .organized(produced)
         } catch {
             return .error(
@@ -211,11 +226,5 @@ public struct OrganizeExistingProcessor: Sendable {
                 )
             )
         }
-    }
-
-    private func existingNames(in directory: URL?, fileManager: FileManager) -> Set<String> {
-        guard let directory else { return [] }
-        let names = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
-        return Set(names)
     }
 }

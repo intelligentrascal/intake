@@ -19,6 +19,12 @@ final class AppModel {
         }
     }
 
+    var renameWhenDownloadFinishes: Bool {
+        didSet {
+            RenameWhenDownloadFinishesPreference.persist(renameWhenDownloadFinishes, to: .standard)
+        }
+    }
+
     var isPaused: Bool {
         !automaticOrganizing
     }
@@ -156,9 +162,12 @@ final class AppModel {
         // (Swift 6 / @Observable rejects self.automaticOrganizing before organizingWait init).
         let autoEnabled = AutomaticOrganizingPreference.isEnabled(in: defaults)
         let waitPreference = OrganizingWait.load(from: defaults)
+        let renameOnFinish = RenameWhenDownloadFinishesPreference.isEnabled(in: defaults)
         organizingWait = waitPreference
         automaticOrganizing = autoEnabled
+        renameWhenDownloadFinishes = renameOnFinish
         AutomaticOrganizingPreference.persist(autoEnabled, to: defaults)
+        RenameWhenDownloadFinishesPreference.persist(renameOnFinish, to: defaults)
         cleanupThresholdDays = defaults.object(forKey: SettingsKey.cleanupDays) as? Int ?? 30
         includeWatchRootInCleanup = defaults.object(forKey: SettingsKey.includeRoot) as? Bool ?? true
         aiSuggestionsEnabled = defaults.bool(forKey: SettingsKey.aiSuggestions)
@@ -221,6 +230,10 @@ final class AppModel {
 
     func setOrganizingWait(_ wait: OrganizingWait) {
         organizingWait = wait
+    }
+
+    func setRenameWhenDownloadFinishes(_ enabled: Bool) {
+        renameWhenDownloadFinishes = enabled
     }
 
     func setPaused(_ paused: Bool) {
@@ -686,13 +699,43 @@ final class AppModel {
             arrivedDuringOrganize.append(url)
             return
         }
-        rememberStable(url, stableAt: stableAt)
+        let current = applyRenameOnStableIfNeeded(url)
+        rememberStable(current, stableAt: stableAt)
         if isPaused {
-            arrivedWhilePaused.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
-            arrivedWhilePaused.append(url)
+            arrivedWhilePaused.removeAll { $0.standardizedFileURL == current.standardizedFileURL }
+            arrivedWhilePaused.append(current)
             return
         }
         reevaluateWaitingForAge()
+    }
+
+    private var liveIngestPolicy: LiveIngestPolicy {
+        LiveIngestPolicy(
+            renameWhenDownloadFinishes: renameWhenDownloadFinishes,
+            automaticOrganizing: automaticOrganizing
+        )
+    }
+
+    private func applyRenameOnStableIfNeeded(_ url: URL) -> URL {
+        guard liveIngestPolicy.shouldRenameOnStable else { return url }
+        let processor = OrganizeExistingProcessor(
+            watchFolder: watchFolder,
+            rules: rules,
+            ignorePolicy: ignorePolicy
+        )
+        switch processor.processOne(url, mode: .renameInPlace) {
+        case .organized(let entries):
+            entries.reversed().forEach(record)
+            return entries.last?.url ?? url
+        case .skipped(let entry):
+            record(entry)
+            return url
+        case .error(let entry):
+            record(entry)
+            return url
+        case .notInWatchRoot:
+            return url
+        }
     }
 
     private func rememberStable(_ url: URL, stableAt: Date) {
@@ -734,7 +777,7 @@ final class AppModel {
             rules: rules,
             ignorePolicy: ignorePolicy
         )
-        switch processor.processOne(url) {
+        switch processor.processOne(url, mode: liveIngestPolicy.applyModeAfterWait) {
         case .organized(let entries):
             entries.reversed().forEach(record)
             requestOpenRouterIfNeeded(entries: entries)
@@ -1025,6 +1068,7 @@ final class AppModel {
 private enum SettingsKey {
     static let paused = AutomaticOrganizingPreference.legacyPausedKey
     static let automaticOrganizing = AutomaticOrganizingPreference.currentKey
+    static let renameWhenDownloadFinishes = RenameWhenDownloadFinishesPreference.currentKey
     static let cleanupDays = "intake.cleanupDays"
     static let includeRoot = "intake.includeWatchRoot"
     static let aiSuggestions = "intake.aiSuggestions"
