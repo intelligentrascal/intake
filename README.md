@@ -44,3 +44,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 [MIT](LICENSE)
+
+After an Xcode Debug build, register a stable Apps target:
+
+```sh
+./scripts/install-local.sh
+```
+
+Then Spotlight / `open -b app.intake.Intake` launch `~/Applications/Intake.app`.

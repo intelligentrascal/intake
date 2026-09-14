@@ -18,6 +18,26 @@ From this directory:
 swift test --package-path IntakeCore
 ```
 
+
+## Install for Spotlight / Apps
+
+Xcode Run only registers the DerivedData Debug bundle, which Spotlight may not keep as a stable Apps target. After a successful build:
+
+```sh
+# from repo root
+./scripts/install-local.sh
+# or:
+./scripts/install-local.sh /path/to/Build/Products/Debug/Intake.app
+```
+
+That copies into `~/Applications/Intake.app`, refreshes Launch Services, and you can open with Spotlight or:
+
+```sh
+open -b app.intake.Intake
+```
+
+Dock must stay on (default) so cold launch presents Settings (`activationPolicy` `.regular`).
+
 ## Notes
 
 - Dock and menu bar are on by default. General → Appearance in macOS toggles them independently; both cannot be off.

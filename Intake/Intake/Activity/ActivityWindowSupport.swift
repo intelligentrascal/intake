@@ -96,3 +96,24 @@ struct SettingsOpenBridge: View {
             }
     }
 }
+
+/// Stamps the SwiftUI Settings window so Dock / becomeActive can find it reliably.
+struct SettingsWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            guard let window = nsView.window else { return }
+            window.identifier = NSUserInterfaceItemIdentifier(NSWindow.swiftUISettingsWindowID)
+            window.isReleasedWhenClosed = false
+            // Prefer our autosave name over the broken SidebarNavigationSplitView frames key.
+            window.setFrameAutosaveName("intake.settings")
+        }
+    }
+}
+

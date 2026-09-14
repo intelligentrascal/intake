@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsRootView: View {
@@ -9,14 +10,35 @@ struct SettingsRootView: View {
     var body: some View {
         @Bindable var model = model
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            List(selection: sidebarSelection) {
+            // Button-based sidebar — List(selection:) was dead under Settings scene
+            // (AX clicks never changed the pane / title). Buttons set the pane directly.
+            VStack(alignment: .leading, spacing: 2) {
                 ForEach(SettingsPane.allCases) { pane in
-                    Label(pane.title, systemImage: pane.systemImage)
-                        .tag(Optional(pane))
-                        .padding(.vertical, 3)
+                    Button {
+                        model.selectedSettingsPane = pane
+                    } label: {
+                        Label(pane.title, systemImage: pane.systemImage)
+                            .labelStyle(.titleAndIcon)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(model.selectedSettingsPane == pane
+                                  ? Color.accentColor.opacity(0.18)
+                                  : Color.clear)
+                    }
+                    .foregroundStyle(model.selectedSettingsPane == pane
+                                     ? Color.primary
+                                     : Color.primary.opacity(0.85))
                 }
+                Spacer(minLength: 0)
             }
-            .listStyle(.sidebar)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 10)
             .navigationTitle("Intake")
             .navigationSplitViewColumnWidth(min: 160, ideal: 192, max: 240)
         } detail: {
@@ -27,10 +49,16 @@ struct SettingsRootView: View {
                 .frame(minWidth: 480, alignment: .topLeading)
         }
         .navigationSplitViewStyle(.balanced)
+        .background {
+            SettingsWindowConfigurator()
+        }
         .onAppear {
-            // NavigationSplitView often restores detail-only from a bad autosave.
             columnVisibility = .all
-            SettingsSplitViewAutosave.resetIfCollapsed()
+            SettingsSplitViewAutosave.resetSettingsSplitFrames()
+            // Re-assert after SwiftUI applies restored split state.
+            DispatchQueue.main.async {
+                columnVisibility = .all
+            }
         }
         .background {
             if !reduceTransparency && contrast != .increased {
@@ -45,19 +73,6 @@ struct SettingsRootView: View {
         } message: {
             Text("Turn off Dock or the menu bar, not both — otherwise there’s no icon to reopen Intake.")
         }
-    }
-
-    /// `List(selection:)` needs an Optional binding — a non-optional enum
-    /// is the usual source of missing / sticky sidebar highlight.
-    private var sidebarSelection: Binding<SettingsPane?> {
-        Binding(
-            get: { model.selectedSettingsPane },
-            set: { pane in
-                if let pane {
-                    model.selectedSettingsPane = pane
-                }
-            }
-        )
     }
 }
 
@@ -82,20 +97,22 @@ private struct SettingsDetailHost: View {
     }
 }
 
-
-/// Clears a bad NSSplitView autosave that leaves Settings detail-only (dead sidebar).
+/// Clears the exact Settings NavigationSplitView autosave that leaves a dead sidebar.
 enum SettingsSplitViewAutosave {
-    static func resetIfCollapsed() {
+    /// Observed on Mac smoke: `NSSplitView Subview Frames com_apple_SwiftUI_Settings_window, SidebarNavigationSplitView`
+    static let exactSettingsSplitKey =
+        "NSSplitView Subview Frames com_apple_SwiftUI_Settings_window, SidebarNavigationSplitView"
+
+    static func resetSettingsSplitFrames() {
         let defaults = UserDefaults.standard
-        // SwiftUI Settings NavigationSplitView commonly persists under these keys.
-        let keys = defaults.dictionaryRepresentation().keys.filter { key in
-            let k = key.lowercased()
-            return k.contains("nssplitview") || k.contains("navigationsplit") || k.contains("splitview")
-        }
-        for key in keys {
-            // Only clear split-related autosaves that look Settings-scoped or global split.
+        defaults.removeObject(forKey: exactSettingsSplitKey)
+        for key in defaults.dictionaryRepresentation().keys {
             let lower = key.lowercased()
-            if lower.contains("settings") || lower.contains("intake") || lower.contains("swiftui") {
+            let isSplit = lower.contains("nssplitview") || lower.contains("navigationsplit")
+            let isSettings = lower.contains("com_apple_swiftui_settings")
+                || lower.contains("sidebarnavigationsplitview")
+                || (lower.contains("settings") && lower.contains("split"))
+            if isSplit && isSettings {
                 defaults.removeObject(forKey: key)
             }
         }

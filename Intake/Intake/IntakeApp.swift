@@ -70,6 +70,9 @@ struct IntakeApp: App {
 @MainActor
 final class IntakeAppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
+    /// Debounce becomeActive opens so focus changes inside Settings (sidebar clicks)
+    /// do not re-enter `openSettings` / `frontSettingsWindow`.
+    private var lastBecomeActiveOpen: Date = .distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.applicationDidFinishLaunching()
@@ -86,12 +89,19 @@ final class IntakeAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Dock click often lands here instead of reopen when a suppressed Window scene
-    /// exists. If Dock icon is shown and Settings is not visible, front Settings.
+    /// exists. Only open Settings when there is truly no Settings panel — never while
+    /// Settings is already key/front (that re-entrancy killed sidebar navigation).
     func applicationDidBecomeActive(_ notification: Notification) {
         guard model.showsInDock else { return }
-        guard !model.isSettingsWindowVisible else { return }
-        // Dock click with Finder/Safari frontmost often yields frontmost=true, wc=0
-        // and skips a reliable reopen forward — open Settings on this path too.
+        if model.isSettingsWindowVisible {
+            return
+        }
+        if let key = NSApp.keyWindow, model.isUsableSettingsWindow(key) {
+            return
+        }
+        let now = Date()
+        guard now.timeIntervalSince(lastBecomeActiveOpen) > 0.45 else { return }
+        lastBecomeActiveOpen = now
         model.bringPrimaryWindowForward()
         DispatchQueue.main.async { [model] in
             if !model.isSettingsWindowVisible {
