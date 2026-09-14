@@ -4,7 +4,7 @@
 **Grounded in:** `docs/PRODUCT.md`, `docs/DESIGN.md`, current Settings / MenuBar scaffold (`~/code/intake`)  
 **Platform:** macOS 26+ · SwiftUI · Apple HIG (not web / not shadcn)  
 **Code:** Designer does not ship app code. Intake Dev implements.  
-**Assets:** `/workspace/fm-intake/assets/`
+**Assets:** `design/assets/`
 
 ---
 
@@ -186,7 +186,7 @@ Glance status, pause safely, jump to a recent file, open Settings — without a 
 ### Findability
 - First launch: open menu bar extra once OR show a one-time Settings tip: `Intake lives in the menu bar — look for the soft-catch icon near Control Center.`  
 - Prefer custom template icon over tray SF Symbol so it’s recognizable next to system items.  
-- **Dock (per IN-05 / captain):** Dock **ON** by default with the same soft-catch app icon; menu bar **ON** by default. Independent toggles in General (“Show in Dock” / “Show in menu bar”); **forbid both off** with alert *Keep one way to open Intake*. Do not ship permanent `LSUIElement=1`. See `/workspace/fm-intake/IN-05-product-dock-thaw.md` for product copy.
+- **Dock (per IN-05 / captain):** Dock **ON** by default with the same soft-catch app icon; menu bar **ON** by default. Independent toggles in General (“Show in Dock” / “Show in menu bar”); **forbid both off** with alert *Keep one way to open Intake*. Do not ship permanent `LSUIElement=1`. See `design/IN-05-product-dock-thaw.md` for product copy.
 
 ### States
 | State | Menu bar glyph | Title |
@@ -282,7 +282,7 @@ Long paragraphs in the menu; nested submenus for v1; badges that scream; animati
 Wiring AI providers for real; full Finder replacement; Windows; inventing new taxonomy folders beyond PRODUCT.
 
 ## Blockers
-None. Assets ready under `/workspace/fm-intake/assets/`.
+None. Assets ready under `design/assets/`.
 
 ---
 

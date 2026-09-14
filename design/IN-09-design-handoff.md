@@ -162,5 +162,3 @@ AI copy generation, ranking, networking — UI only.
 ## Blockers
 - PM rules-suggestions PRD not in tree — UI shell specified; confirm fields when PRD arrives.
 
-## File
-`/workspace/fm-intake/IN-09-design-handoff.md`

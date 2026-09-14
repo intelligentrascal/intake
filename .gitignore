@@ -31,3 +31,8 @@ Package.resolved
 .env
 .env.*
 *.pem
+
+# Local / smoke / signing artifacts
+design/smoke/
+*.p12
+*.mobileprovision
