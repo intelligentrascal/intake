@@ -5,65 +5,36 @@ struct SettingsRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
         @Bindable var model = model
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            // Button-based sidebar — List(selection:) was dead under Settings scene
-            // (AX clicks never changed the pane / title). Buttons set the pane directly.
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(SettingsPane.allCases) { pane in
-                    Button {
-                        model.selectedSettingsPane = pane
-                    } label: {
-                        Label(pane.title, systemImage: pane.systemImage)
-                            .labelStyle(.titleAndIcon)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(model.selectedSettingsPane == pane
-                                  ? Color.accentColor.opacity(0.18)
-                                  : Color.clear)
-                    }
-                    .foregroundStyle(model.selectedSettingsPane == pane
-                                     ? Color.primary
-                                     : Color.primary.opacity(0.85))
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 10)
-            .navigationTitle("Intake")
-            .navigationSplitViewColumnWidth(min: 160, ideal: 192, max: 240)
-        } detail: {
+        // Plain HStack — NavigationSplitView under the Settings scene ate clicks
+        // (AX saw only traffic lights; List/Button rows never changed the pane).
+        HStack(spacing: 0) {
+            SettingsSidebar()
+                .frame(width: 192)
+                .frame(maxHeight: .infinity, alignment: .top)
+
+            Divider()
+
             SettingsDetailHost()
                 .id(model.selectedSettingsPane)
-                .navigationTitle(model.selectedSettingsPane.title)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .environment(model)
-                .frame(minWidth: 480, alignment: .topLeading)
         }
-        .navigationSplitViewStyle(.balanced)
         .background {
-            SettingsWindowConfigurator()
-        }
-        .onAppear {
-            columnVisibility = .all
-            SettingsSplitViewAutosave.resetSettingsSplitFrames()
-            // Re-assert after SwiftUI applies restored split state.
-            DispatchQueue.main.async {
-                columnVisibility = .all
-            }
+            SettingsWindowConfigurator(title: model.selectedSettingsPane.title)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
         .background {
             if !reduceTransparency && contrast != .increased {
                 IntakeMeshBackground(style: .settingsWash, animated: false)
             }
+        }
+        .onAppear {
+            SettingsSplitViewAutosave.resetSettingsSplitFrames()
         }
         .alert(
             "Keep one way to open Intake",
@@ -76,30 +47,79 @@ struct SettingsRootView: View {
     }
 }
 
+private struct SettingsSidebar: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Intake")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.top, 12)
+                .padding(.bottom, 6)
+                .accessibilityAddTraits(.isHeader)
+
+            ForEach(SettingsPane.allCases) { pane in
+                Button {
+                    model.selectedSettingsPane = pane
+                } label: {
+                    Label(pane.title, systemImage: pane.systemImage)
+                        .labelStyle(.titleAndIcon)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .background {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(model.selectedSettingsPane == pane
+                              ? Color.accentColor.opacity(0.18)
+                              : Color.clear)
+                }
+                .foregroundStyle(.primary)
+                .accessibilityLabel(pane.title)
+                .accessibilityAddTraits(model.selectedSettingsPane == pane ? .isSelected : [])
+                .accessibilityHint("Show \(pane.title) settings")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.bottom, 10)
+        .background(.ultraThinMaterial.opacity(0.35))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Settings sidebar")
+    }
+}
+
 private struct SettingsDetailHost: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        switch model.selectedSettingsPane {
-        case .general:
-            GeneralSettingsView()
-        case .rules:
-            RulesSettingsView()
-        case .cleanup:
-            CleanupSettingsView()
-        case .activity:
-            ActivitySettingsView()
-        case .ai:
-            AISettingsView()
-        case .about:
-            AboutSettingsView()
+        Group {
+            switch model.selectedSettingsPane {
+            case .general:
+                GeneralSettingsView()
+            case .rules:
+                RulesSettingsView()
+            case .cleanup:
+                CleanupSettingsView()
+            case .activity:
+                ActivitySettingsView()
+            case .ai:
+                AISettingsView()
+            case .about:
+                AboutSettingsView()
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityLabel("\(model.selectedSettingsPane.title) settings")
     }
 }
 
-/// Clears the exact Settings NavigationSplitView autosave that leaves a dead sidebar.
+/// Legacy cleanup for prefs left by the old NavigationSplitView Settings layout.
 enum SettingsSplitViewAutosave {
-    /// Observed on Mac smoke: `NSSplitView Subview Frames com_apple_SwiftUI_Settings_window, SidebarNavigationSplitView`
     static let exactSettingsSplitKey =
         "NSSplitView Subview Frames com_apple_SwiftUI_Settings_window, SidebarNavigationSplitView"
 

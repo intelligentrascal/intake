@@ -98,21 +98,32 @@ struct SettingsOpenBridge: View {
 }
 
 /// Stamps the SwiftUI Settings window so Dock / becomeActive can find it reliably.
+/// Zero-size, non-interactive stamp for the Settings window id.
+/// Must never expand or participate in hit-testing (a full-bleed `.background`
+/// NSView was eating sidebar clicks on Mac smoke).
+final class SettingsWindowStampView: NSView {
+    override var intrinsicContentSize: NSSize { .zero }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 struct SettingsWindowConfigurator: NSViewRepresentable {
+    var title: String = "Intake"
+
     func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        let view = SettingsWindowStampView(frame: .zero)
+        view.isHidden = true
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.isHidden = true
+        let title = title
         DispatchQueue.main.async {
             guard let window = nsView.window else { return }
             window.identifier = NSUserInterfaceItemIdentifier(NSWindow.swiftUISettingsWindowID)
             window.isReleasedWhenClosed = false
-            // Prefer our autosave name over the broken SidebarNavigationSplitView frames key.
             window.setFrameAutosaveName("intake.settings")
+            window.title = title
         }
     }
 }
