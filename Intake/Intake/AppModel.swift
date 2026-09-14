@@ -340,6 +340,35 @@ final class AppModel {
         openSettings(pane: selectedSettingsPane)
     }
 
+    var organizeConfirmTitle: String {
+        OrganizeExistingCopy.confirmTitle(folderName: watchFolder.lastPathComponent)
+    }
+
+    var organizeConfirmMessage: String {
+        if isPaused {
+            return OrganizeExistingCopy.confirmBody + "
+
+" + OrganizeExistingCopy.pausedOneShotNote
+        }
+        return OrganizeExistingCopy.confirmBody
+    }
+
+    func requestOrganizeExisting() {
+        if isOrganizingExisting {
+            organizeProgressPresented = true
+            openActivity()
+            return
+        }
+        let scan = OrganizeExistingScanner(watchFolder: watchFolder).scan()
+        pendingOrganizeScan = scan
+        openActivity()
+        if scan.eligible.isEmpty {
+            organizeNothingPresented = true
+            return
+        }
+        organizeConfirmPresented = true
+    }
+
     func confirmOrganizeExisting() {
         organizeConfirmPresented = false
         guard let scan = pendingOrganizeScan else { return }
