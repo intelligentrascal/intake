@@ -373,3 +373,28 @@ struct OpenRouterFolderOnlyTests {
         #expect(user == "File name: Quarterly_Report.pdf")
     }
 }
+
+struct IngestPipelineEmptyRouteTests {
+    @Test
+    func routeOnlyRefusesEmptyPlaceholder() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory.appendingPathComponent(
+            "intake-empty-route-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let empty = root.appendingPathComponent("Resurf 2.9.2-121.dmg")
+        try Data().write(to: empty)
+        let pipeline = IngestPipeline(watchFolder: root)
+        let routed = try pipeline.applyRoute(at: empty, fileManager: fileManager)
+        #expect(routed.isEmpty)
+        #expect(fileManager.fileExists(atPath: empty.path))
+        #expect(
+            fileManager.fileExists(
+                atPath: root.appendingPathComponent("Installers", isDirectory: true).path
+            ) == false
+        )
+    }
+}

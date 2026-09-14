@@ -3,6 +3,9 @@ import Foundation
 import IntakeCore
 
 nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
+    /// Minimum unchanged dwell before a non-zero file is considered stable.
+    static let minimumStableDwell: TimeInterval = 2.0
+
     private let queue = DispatchQueue(label: "app.intake.watcher")
     private var policy = DownloadIgnorePolicy()
     private var descriptor: Int32 = -1
@@ -11,6 +14,7 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
     private var folder: URL?
     private var knownNames: Set<String> = []
     private var pending: [String: FileStabilitySnapshot] = [:]
+    private var pendingSince: [String: Date] = [:]
     private var onStable: ((URL) -> Void)?
 
     func start(
@@ -25,6 +29,7 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
             self.onStable = onStableFile
             self.knownNames = self.currentRootNames(in: folder)
             self.pending.removeAll()
+            self.pendingSince.removeAll()
             let fd = open(folder.path, O_EVTONLY)
             guard fd >= 0 else { return }
             self.descriptor = fd
@@ -54,6 +59,16 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
         }
     }
 
+    /// After rename-on-stable, mark the new root name known so the watcher
+    /// does not treat the rename as a brand-new download.
+    func acknowledgeRootFile(named name: String) {
+        queue.async {
+            self.knownNames.insert(name)
+            self.pending.removeValue(forKey: name)
+            self.pendingSince.removeValue(forKey: name)
+        }
+    }
+
     func stop() {
         queue.sync {
             debounce?.cancel()
@@ -61,6 +76,7 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
             source?.cancel()
             source = nil
             pending.removeAll()
+            pendingSince.removeAll()
             onStable = nil
             folder = nil
         }
@@ -91,6 +107,7 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
 
         var present: Set<String> = []
         var stillPending = false
+        let now = Date()
 
         for url in items {
             let name = url.lastPathComponent
@@ -108,18 +125,38 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
                 size: Int64(values?.fileSize ?? 0),
                 modificationTime: values?.contentModificationDate?.timeIntervalSince1970 ?? 0
             )
+
+            // Never stabilize a zero-byte placeholder — browsers often create the
+            // final name empty, then write. Renaming that empty file races the writer.
+            if snapshot.size <= 0 {
+                pending[name] = snapshot
+                if pendingSince[name] == nil {
+                    pendingSince[name] = now
+                }
+                stillPending = true
+                continue
+            }
+
             if pending[name] == snapshot {
-                knownNames.insert(name)
-                pending.removeValue(forKey: name)
-                onStable?(url)
+                let since = pendingSince[name] ?? now
+                if now.timeIntervalSince(since) >= Self.minimumStableDwell {
+                    knownNames.insert(name)
+                    pending.removeValue(forKey: name)
+                    pendingSince.removeValue(forKey: name)
+                    onStable?(url)
+                } else {
+                    stillPending = true
+                }
             } else {
                 pending[name] = snapshot
+                pendingSince[name] = now
                 stillPending = true
             }
         }
 
         knownNames = knownNames.intersection(present)
         pending = pending.filter { present.contains($0.key) }
+        pendingSince = pendingSince.filter { present.contains($0.key) }
         if stillPending {
             scheduleScan()
         }

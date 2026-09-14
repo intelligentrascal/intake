@@ -726,7 +726,13 @@ final class AppModel {
         switch processor.processOne(url, mode: .renameInPlace) {
         case .organized(let entries):
             entries.reversed().forEach(record)
-            return entries.last?.url ?? url
+            let current = entries.last?.url ?? url
+            // Prevent the watcher from treating the renamed root name as a new download.
+            watcher.acknowledgeRootFile(named: current.lastPathComponent)
+            if current.standardizedFileURL != url.standardizedFileURL {
+                watcher.acknowledgeRootFile(named: url.lastPathComponent)
+            }
+            return current
         case .skipped(let entry):
             record(entry)
             return url
@@ -756,9 +762,22 @@ final class AppModel {
             wait: organizingWait
         )
         waitingForAge = partitioned.waiting
+        var deferred: [PendingStableFile] = []
         for item in partitioned.ready {
-            applyIngest(item.url)
+            // Belt-and-suspenders: never route before Wait even if partition misfires.
+            guard liveIngestPolicy.shouldRoute(
+                stableAt: item.stableAt,
+                wait: organizingWait
+            ) else {
+                deferred.append(item)
+                continue
+            }
+            if !applyIngest(item.url) {
+                // Empty / still-writing — keep waiting with original stableAt.
+                deferred.append(item)
+            }
         }
+        waitingForAge.append(contentsOf: deferred)
 
         guard let next = waitingForAge.min(by: { $0.stableAt < $1.stableAt }) else { return }
         let delay = FileAgeGate.delayUntilEligible(stableAt: next.stableAt, wait: organizingWait)
@@ -770,8 +789,14 @@ final class AppModel {
         }
     }
 
-    private func applyIngest(_ url: URL) {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
+    /// Returns `false` when the file should stay queued (missing, empty, or not routed yet).
+    @discardableResult
+    private func applyIngest(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return true }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if size <= 0 {
+            return false
+        }
         let processor = OrganizeExistingProcessor(
             watchFolder: watchFolder,
             rules: rules,
@@ -779,14 +804,21 @@ final class AppModel {
         )
         switch processor.processOne(url, mode: liveIngestPolicy.applyModeAfterWait) {
         case .organized(let entries):
+            if entries.isEmpty {
+                // routeOnly refused (e.g. empty) — keep queued.
+                return false
+            }
             entries.reversed().forEach(record)
             requestOpenRouterIfNeeded(entries: entries)
+            return true
         case .skipped(let entry):
             record(entry)
+            return true
         case .error(let entry):
             record(entry)
+            return true
         case .notInWatchRoot:
-            break
+            return true
         }
     }
 

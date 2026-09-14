@@ -121,6 +121,11 @@ public struct IngestPipeline: Sendable {
         guard fileManager.fileExists(atPath: source.path) else {
             return []
         }
+        let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        // Never file an empty placeholder (false-stable / still-writing download).
+        guard size > 0 else {
+            return []
+        }
 
         let match = DefaultTaxonomy.matchingRule(for: source, rules: rules)
         let destinationFolderName = match?.folderName ?? FileCategory.other.folderName

@@ -121,4 +121,17 @@ struct FileAgeGateTests {
             )
         )
     }
+
+    @Test
+    func stringStoredSecondsDoNotCollapseToImmediately() {
+        let suite = "intake.tests.wait-string-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set("7200", forKey: OrganizingWait.defaultsKey)
+        #expect(OrganizingWait.load(from: defaults) == .twoHours)
+
+        defaults.set(7200, forKey: OrganizingWait.defaultsKey)
+        #expect(OrganizingWait.load(from: defaults) == .twoHours)
+    }
 }
