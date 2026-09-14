@@ -27,6 +27,11 @@ struct SettingsRootView: View {
                 .frame(minWidth: 480, alignment: .topLeading)
         }
         .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            // NavigationSplitView often restores detail-only from a bad autosave.
+            columnVisibility = .all
+            SettingsSplitViewAutosave.resetIfCollapsed()
+        }
         .background {
             if !reduceTransparency && contrast != .increased {
                 IntakeMeshBackground(style: .settingsWash, animated: false)
@@ -73,6 +78,26 @@ private struct SettingsDetailHost: View {
             AISettingsView()
         case .about:
             AboutSettingsView()
+        }
+    }
+}
+
+
+/// Clears a bad NSSplitView autosave that leaves Settings detail-only (dead sidebar).
+enum SettingsSplitViewAutosave {
+    static func resetIfCollapsed() {
+        let defaults = UserDefaults.standard
+        // SwiftUI Settings NavigationSplitView commonly persists under these keys.
+        let keys = defaults.dictionaryRepresentation().keys.filter { key in
+            let k = key.lowercased()
+            return k.contains("nssplitview") || k.contains("navigationsplit") || k.contains("splitview")
+        }
+        for key in keys {
+            // Only clear split-related autosaves that look Settings-scoped or global split.
+            let lower = key.lowercased()
+            if lower.contains("settings") || lower.contains("intake") || lower.contains("swiftui") {
+                defaults.removeObject(forKey: key)
+            }
         }
     }
 }

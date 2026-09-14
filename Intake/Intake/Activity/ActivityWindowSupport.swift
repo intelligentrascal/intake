@@ -7,11 +7,19 @@ enum IntakeSceneID {
 
 extension Notification.Name {
     static let intakeOpenActivity = Notification.Name("intake.openActivity")
+    static let intakeOpenSettings = Notification.Name("intake.openSettings")
 }
 
 extension NSWindow {
+    /// SwiftUI Settings scene window id on macOS.
+    static let swiftUISettingsWindowID = "com_apple_SwiftUI_Settings_window"
+
     var isIntakeActivityWindow: Bool {
         identifier?.rawValue == IntakeSceneID.activity
+    }
+
+    var isSwiftUISettingsWindow: Bool {
+        identifier?.rawValue == Self.swiftUISettingsWindowID
     }
 }
 
@@ -66,6 +74,25 @@ struct ActivityWindowOpenBridge: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .intakeOpenActivity)) { _ in
                 openWindow(id: IntakeSceneID.activity)
+            }
+    }
+}
+
+/// Bridges AppKit Dock / reopen to SwiftUI `openSettings` (Settings scene).
+/// Hosted in MenuBarExtra so Dock clicks work even when Settings is closed.
+struct SettingsOpenBridge: View {
+    @Environment(\.openSettings) private var openSettings
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onChange(of: model.settingsWindowRequestID) { _, _ in
+                openSettings()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .intakeOpenSettings)) { _ in
+                openSettings()
             }
     }
 }

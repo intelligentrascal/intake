@@ -40,6 +40,7 @@ struct IntakeApp: App {
             MenuBarContentView()
                 .environment(model)
                 .background(ActivityWindowOpenBridge().environment(model))
+                .background(SettingsOpenBridge().environment(model))
         } label: {
             MenuBarLabel()
                 .environment(model)
@@ -51,6 +52,7 @@ struct IntakeApp: App {
                 .environment(model)
                 .frame(minWidth: 720, minHeight: 480)
                 .background(ActivityWindowOpenBridge().environment(model))
+                .background(SettingsOpenBridge().environment(model))
         }
     }
 
@@ -70,15 +72,24 @@ final class IntakeAppDelegate: NSObject, NSApplicationDelegate {
         model.applicationDidFinishLaunching()
     }
 
+    /// Dock icon click / reopen. SwiftUI often does NOT forward this when a Window
+    /// scene exists; with Activity `.defaultLaunchBehavior(.suppressed)`, Dock can
+    /// present nothing. Always open Settings and return `false`.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        // IN-11: handle reopen ourselves. Returning true lets AppKit also front the
-        // first window (often suppressed Activity). Returning false synchronously
-        // *before* showSettingsWindow: can prevent the Settings scene from
-        // materializing — defer the open to the next run-loop turn.
         DispatchQueue.main.async { [model] in
             model.bringPrimaryWindowForward()
         }
         return false
+    }
+
+    /// Dock click often lands here instead of reopen when a suppressed Window scene
+    /// exists. If Dock icon is shown and Settings is not visible, front Settings.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard model.showsInDock else { return }
+        guard !model.isSettingsWindowVisible else { return }
+        DispatchQueue.main.async { [model] in
+            model.bringPrimaryWindowForward()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

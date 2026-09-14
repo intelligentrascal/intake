@@ -257,12 +257,6 @@ final class AppModel {
         NSApp.setActivationPolicy(showsInDock ? .regular : .accessory)
     }
 
-    func bringPrimaryWindowForward() {
-        // IN-09-dock-crash: Dock / reopen opens Settings — not Activity.
-        // Avoids ActivityWindowFallback SEGV on the reopen path.
-        openSettings(pane: selectedSettingsPane)
-    }
-
     func openActivity() {
         NSApp.activate(ignoringOtherApps: true)
         if let window = existingActivityWindow() {
@@ -286,52 +280,62 @@ final class AppModel {
 
     func openSettings(pane: SettingsPane) {
         selectedSettingsPane = pane
+        // Activity must never steal key when Settings opens (Dock reopen, menu, etc.).
         resignAndHideActivityWindows()
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        // IN-11: Settings scene often materializes asynchronously after
-        // showSettingsWindow:. Front immediately if present, then retry shortly.
-        if let settings = existingSettingsWindow() {
-            front(settings)
+        // Prefer SwiftUI openSettings bridge (MenuBarExtra) — AppKit showSettingsWindow:
+        // often no-ops when Settings scene was never opened / no key window.
+        settingsWindowRequestID &+= 1
+        NotificationCenter.default.post(name: .intakeOpenSettings, object: nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.frontSettingsWindow()
         }
-        Task { @MainActor in
-            for delay in [50, 150, 300] as [UInt64] {
-                try? await Task.sleep(for: .milliseconds(delay))
-                self.resignAndHideActivityWindows()
-                if let settings = self.existingSettingsWindow() {
-                    self.front(settings)
-                    return
-                }
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        // AppKit fallback: send to NSApp (not nil — nil responder chain no-ops with no key window).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            if !self.isSettingsWindowVisible {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: NSApp, from: nil)
+                self.frontSettingsWindow()
+            }
+        }
+        for delay in [0.12, 0.28, 0.55] as [TimeInterval] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.frontSettingsWindow()
             }
         }
     }
 
-    var organizeConfirmTitle: String {
-        OrganizeExistingCopy.confirmTitle(folderName: watchFolder.lastPathComponent)
+    /// True when a SwiftUI Settings window is on-screen (not miniaturized).
+    var isSettingsWindowVisible: Bool {
+        NSApp.windows.contains { window in
+            window.isSwiftUISettingsWindow && window.isVisible && !window.isMiniaturized
+        }
     }
 
-    var organizeConfirmMessage: String {
-        if isPaused {
-            return OrganizeExistingCopy.confirmBody + "\n\n" + OrganizeExistingCopy.pausedOneShotNote
+    /// Order the SwiftUI Settings window front by known id.
+    func frontSettingsWindow() {
+        for window in NSApp.windows where window.isSwiftUISettingsWindow {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.collectionBehavior.insert(.moveToActiveSpace)
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
         }
-        return OrganizeExistingCopy.confirmBody
+        // Fallback: any non-Activity visible panel that looks like Settings.
+        for window in NSApp.windows where window.isVisible && !window.isIntakeActivityWindow {
+            let id = window.identifier?.rawValue ?? ""
+            if id.contains("Settings") || window.title.localizedCaseInsensitiveContains("Settings") {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
+        }
     }
 
-    func requestOrganizeExisting() {
-        if isOrganizingExisting {
-            organizeProgressPresented = true
-            openActivity()
-            return
-        }
-        let scan = OrganizeExistingScanner(watchFolder: watchFolder).scan()
-        pendingOrganizeScan = scan
-        openActivity()
-        if scan.eligible.isEmpty {
-            organizeNothingPresented = true
-            return
-        }
-        organizeConfirmPresented = true
+    /// Dock / reopen / become-active: Settings is the primary surface (not Activity).
+    func bringPrimaryWindowForward() {
+        openSettings(pane: selectedSettingsPane)
     }
 
     func confirmOrganizeExisting() {
