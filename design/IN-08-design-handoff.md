@@ -80,4 +80,4 @@ Min size ~520×420; remember position. Reduce Motion: no theatrical open animati
 AI providers, Cleanup redesign, new taxonomy, Thaw GPL.
 
 ## Blockers
-None. Dense SVGs ready under `/workspace/fm-intake/assets/`.
+None. Dense SVGs ready under `design/assets/`.
