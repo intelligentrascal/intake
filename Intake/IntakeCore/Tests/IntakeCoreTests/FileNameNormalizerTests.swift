@@ -109,6 +109,17 @@ struct FileNameNormalizerTests {
     }
 
     @Test
+    func allowlistProtectDoesNotLeakInsideGuide() {
+        let name = normalizer.proposedFileName(
+            for: URL(fileURLWithPath: "/tmp/iPhone_setup_guide.pdf")
+        )
+        #expect(name == "iPhone Setup Guide.pdf")
+        #expect(!name.lowercased().contains("intakealw"))
+        #expect(!name.lowercased().contains("zzintake"))
+    }
+
+
+    @Test
     func helloWorldPreservesZipExtensionCase() {
         let url = URL(fileURLWithPath: "/tmp/HELLO_WORLD.ZIP")
         #expect(normalizer.proposedFileName(for: url) == "Hello World.ZIP")

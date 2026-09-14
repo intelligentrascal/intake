@@ -139,10 +139,17 @@ public struct FileNameNormalizer: Sendable, Equatable {
     }
 
 
-    /// Tokens that must not be broken by `splitCamelCase` (matched case-insensitively).
+    /// Mixed-case product tokens that `splitCamelCase` would break (macOS → "mac OS").
+    /// Short acronyms (AI, ID, …) are NOT protected here — substring matches like
+    /// `id` inside `guide` leaked placeholders into real filenames.
     private static var camelProtectTokens: [String] {
-        // Longest first so macOS wins over shorter fragments.
-        Array(Set(casingAllowlist.values)).sorted { $0.count > $1.count }
+        Array(Set(casingAllowlist.values))
+            .filter { token in
+                let hasLower = token.contains { $0.isLowercase }
+                let hasUpper = token.contains { $0.isUppercase }
+                return hasLower && hasUpper
+            }
+            .sorted { $0.count > $1.count }
     }
 
     private func protectCamelAllowlistTokens(
@@ -151,16 +158,14 @@ public struct FileNameNormalizer: Sendable, Equatable {
         var text = name
         var placeholders: [String: String] = [:]
         for (index, token) in Self.camelProtectTokens.enumerated() {
-            let placeholder = "ZZINTAKEALW\(index)ZZ"
-            guard let regex = try? NSRegularExpression(
-                pattern: NSRegularExpression.escapedPattern(for: token),
-                options: [.caseInsensitive]
-            ) else {
+            // Private-use placeholders: no letters/digits for camel/title to mangle.
+            let placeholder = "\u{E000}\(index)\u{E001}"
+            let pattern = "(?<![A-Za-z0-9])\(NSRegularExpression.escapedPattern(for: token))(?![A-Za-z0-9])"
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
                 continue
             }
             let nsrange = NSRange(text.startIndex..<text.endIndex, in: text)
             let matches = regex.matches(in: text, options: [], range: nsrange)
-            // Replace from the end so earlier ranges stay valid.
             for match in matches.reversed() {
                 guard let range = Range(match.range, in: text) else { continue }
                 let matched = String(text[range])
@@ -176,9 +181,14 @@ public struct FileNameNormalizer: Sendable, Equatable {
         placeholders: [String: String]
     ) -> String {
         var text = name
-        // Longer placeholders first (higher indices can be prefixes of lower — use exact keys).
         for (placeholder, canonical) in placeholders.sorted(by: { $0.key.count > $1.key.count }) {
             text = text.replacingOccurrences(of: placeholder, with: canonical)
+        }
+        // Safety: never leave a private-use placeholder in a user-visible name.
+        if text.unicodeScalars.contains(where: { $0.value == 0xE000 || $0.value == 0xE001 }) {
+            assertionFailure("FileNameNormalizer: unresolved camel-protect placeholder")
+            text = text.replacingOccurrences(of: "\u{E000}", with: "")
+            text = text.replacingOccurrences(of: "\u{E001}", with: "")
         }
         return text
     }
