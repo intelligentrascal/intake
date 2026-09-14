@@ -141,7 +141,7 @@ public struct FileNameNormalizer: Sendable, Equatable {
 
     /// Tokens that must not be broken by `splitCamelCase` (matched case-insensitively).
     private static var camelProtectTokens: [String] {
-        // Longest first so macOS wins over OS-ish fragments.
+        // Longest first so macOS wins over shorter fragments.
         Array(Set(casingAllowlist.values)).sorted { $0.count > $1.count }
     }
 
@@ -151,19 +151,21 @@ public struct FileNameNormalizer: Sendable, Equatable {
         var text = name
         var placeholders: [String: String] = [:]
         for (index, token) in Self.camelProtectTokens.enumerated() {
-            let placeholder = "⟦A\(index)⟧"
-            var searchStart = text.startIndex
-            while searchStart < text.endIndex {
-                let slice = text[searchStart...]
-                guard let range = slice.range(of: token, options: [.caseInsensitive]) else {
-                    break
-                }
-                // Only protect when this occurrence contains an interior lower→Upper
-                // boundary (the case camel-split would break), or equals the token.
+            let placeholder = "ZZINTAKEALW\(index)ZZ"
+            guard let regex = try? NSRegularExpression(
+                pattern: NSRegularExpression.escapedPattern(for: token),
+                options: [.caseInsensitive]
+            ) else {
+                continue
+            }
+            let nsrange = NSRange(text.startIndex..<text.endIndex, in: text)
+            let matches = regex.matches(in: text, options: [], range: nsrange)
+            // Replace from the end so earlier ranges stay valid.
+            for match in matches.reversed() {
+                guard let range = Range(match.range, in: text) else { continue }
                 let matched = String(text[range])
                 placeholders[placeholder] = Self.casingAllowlist[matched.lowercased()] ?? token
                 text.replaceSubrange(range, with: placeholder)
-                searchStart = text.index(range.lowerBound, offsetBy: placeholder.count)
             }
         }
         return (text, placeholders)
@@ -174,7 +176,8 @@ public struct FileNameNormalizer: Sendable, Equatable {
         placeholders: [String: String]
     ) -> String {
         var text = name
-        for (placeholder, canonical) in placeholders {
+        // Longer placeholders first (higher indices can be prefixes of lower — use exact keys).
+        for (placeholder, canonical) in placeholders.sorted(by: { $0.key.count > $1.key.count }) {
             text = text.replacingOccurrences(of: placeholder, with: canonical)
         }
         return text
