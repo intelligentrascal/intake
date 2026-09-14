@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// Paper Design–inspired God Rays for Intake. Native Metal + SwiftUI only (no npm).
-/// Captain reference props: blue `#4763ff` + orange `#ff8c00`, black back, bloom `#222287`.
+/// IN-12 hold: captain rejected this as the live aesthetic — kept for selectable
+/// preview / Designer A-B-C comparison. Shipping default is `IntakeMeshBackground`.
+/// Reference props: blue `#4763ff` + orange `#ff8c00`, black back, bloom `#222287`.
 struct GodRaysBackground: View {
     enum Profile {
         /// Settings sidebar — calmer so labels stay readable (HIG).

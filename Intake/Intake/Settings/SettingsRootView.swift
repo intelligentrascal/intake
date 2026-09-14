@@ -16,7 +16,8 @@ struct SettingsRootView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
                 .background {
                     if !reduceTransparency && contrast != .increased {
-                        GodRaysBackground(profile: .settingsSidebar, animated: true)
+                        // IN-12 hold: MeshGradient default until Designer trio lands.
+                        IntakeMeshBackground(style: .settingsWash, animated: false)
                     }
                 }
 
@@ -28,7 +29,7 @@ struct SettingsRootView: View {
                 .environment(model)
                 .background {
                     if !reduceTransparency && contrast != .increased {
-                        GodRaysBackground(profile: .settingsDetail, animated: true)
+                        IntakeMeshBackground(style: .settingsWash, animated: true)
                     }
                 }
         }
