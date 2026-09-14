@@ -346,9 +346,7 @@ final class AppModel {
 
     var organizeConfirmMessage: String {
         if isPaused {
-            return OrganizeExistingCopy.confirmBody + "
-
-" + OrganizeExistingCopy.pausedOneShotNote
+            return OrganizeExistingCopy.confirmBody + "\n\n" + OrganizeExistingCopy.pausedOneShotNote
         }
         return OrganizeExistingCopy.confirmBody
     }
