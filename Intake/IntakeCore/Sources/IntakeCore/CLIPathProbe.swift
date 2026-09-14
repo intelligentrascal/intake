@@ -1,15 +1,31 @@
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 
 /// PATH lookup for optional CLIs. v1 is detection-only: no process is launched.
 public enum CLIPathProbe: Sendable {
+    /// Real user home from the passwd DB — not the App Sandbox container home
+    /// returned by `NSHomeDirectory()` (which made `~/.local/bin` miss claude).
+    public static var realUserHomeDirectory: String {
+        if let pw = getpwuid(getuid()), let dir = pw.pointee.pw_dir {
+            return String(cString: dir)
+        }
+        return NSHomeDirectory()
+    }
+
     /// Directories GUI apps often miss because `ProcessInfo` PATH is thinner than a login shell.
-    public static let commonInstallDirectories: [String] = [
-        NSHomeDirectory() + "/.local/bin",
-        "/opt/homebrew/bin",
-        "/opt/homebrew/sbin",
-        "/usr/local/bin",
-        "/usr/local/sbin",
-    ]
+    public static var commonInstallDirectories: [String] {
+        [
+            realUserHomeDirectory + "/.local/bin",
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/local/sbin",
+        ]
+    }
 
     /// Merges `ProcessInfo` PATH with common install dirs (and optional extras).
     /// Order: process PATH entries first, then common dirs not already listed.

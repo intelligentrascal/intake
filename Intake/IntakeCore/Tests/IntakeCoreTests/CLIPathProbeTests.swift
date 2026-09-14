@@ -195,6 +195,19 @@ struct CLIPathProbeTests {
         #expect(codex?.isAvailable == true)
     }
 
+
+    @Test
+    func realUserHomeDirectoryIsNonEmpty() {
+        #expect(!CLIPathProbe.realUserHomeDirectory.isEmpty)
+    }
+
+    @Test
+    func commonInstallDirectoriesPreferRealHomeLocalBin() {
+        let local = CLIPathProbe.realUserHomeDirectory + "/.local/bin"
+        #expect(CLIPathProbe.commonInstallDirectories.contains(local))
+        #expect(CLIPathProbe.commonInstallDirectories.contains("/opt/homebrew/bin"))
+    }
+
 struct LaunchWindowPolicyTests {
     @Test
     func launchAlwaysHidesActivityAndOpensSettingsWhenDockIsOn() {

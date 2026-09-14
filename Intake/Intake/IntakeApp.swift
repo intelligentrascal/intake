@@ -71,10 +71,13 @@ final class IntakeAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        // IN-11: we fully handle reopen (Settings forward). Returning true lets
-        // AppKit also front the first window — often the suppressed Activity scene —
-        // which makes Dock clicks look dead and can steal key focus from Settings.
-        model.bringPrimaryWindowForward()
+        // IN-11: handle reopen ourselves. Returning true lets AppKit also front the
+        // first window (often suppressed Activity). Returning false synchronously
+        // *before* showSettingsWindow: can prevent the Settings scene from
+        // materializing — defer the open to the next run-loop turn.
+        DispatchQueue.main.async { [model] in
+            model.bringPrimaryWindowForward()
+        }
         return false
     }
 

@@ -289,16 +289,20 @@ final class AppModel {
         resignAndHideActivityWindows()
         NSApp.activate(ignoringOtherApps: true)
         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        // IN-11: showSettingsWindow: alone can leave Settings non-key (Activity scene).
+        // IN-11: Settings scene often materializes asynchronously after
+        // showSettingsWindow:. Front immediately if present, then retry shortly.
         if let settings = existingSettingsWindow() {
             front(settings)
-        } else {
-            // Scene may still be materializing — one short retry.
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(50))
+        }
+        Task { @MainActor in
+            for delay in [50, 150, 300] as [UInt64] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                self.resignAndHideActivityWindows()
                 if let settings = self.existingSettingsWindow() {
                     self.front(settings)
+                    return
                 }
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
         }
     }
