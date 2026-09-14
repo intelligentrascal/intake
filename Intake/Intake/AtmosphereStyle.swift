@@ -1,26 +1,26 @@
 import Foundation
 
-/// IN-12 Designer atmospheres (IN-12-atmospheres.md). Captain picks one after screenshots.
+/// IN-12 atmospheres. Captain chose Paper Mesh as the live default (skipped A/B/C picker).
 /// Switch for Mac smoke:
-///   defaults write app.intake.Intake intake.atmosphereStyle quietMesh
-///   defaults write app.intake.Intake intake.atmosphereStyle softAurora
-///   defaults write app.intake.Intake intake.atmosphereStyle materialFirst
-/// Or Debug menu → Atmosphere (live via `@AppStorage`).
+///   Debug menu → Atmosphere
+///   defaults write app.intake.Intake intake.atmosphereStyle paperMesh
 enum AtmosphereStyle: String, CaseIterable, Identifiable, Sendable {
-    /// A — Quiet Mesh (refined utility).
+    /// Captain pick — Paper Design MeshGradient look (native Metal).
+    case paperMesh
+    /// A — Quiet Mesh (preview retained).
     case quietMesh
-    /// B — Soft Aurora Vignette (no rays).
+    /// B — Soft Aurora Vignette (preview retained).
     case softAurora
-    /// C — Material First (HIG only).
+    /// C — Material First (preview retained).
     case materialFirst
 
-    /// Legacy aliases from hold stub — accepted by defaults / AppStorage.
     public static func resolve(_ raw: String?) -> AtmosphereStyle {
         switch raw {
+        case "paperMesh", "paper", "meshGradient": return .paperMesh
         case "quietMesh", "designerA", "mesh": return .quietMesh
         case "softAurora", "designerB", "aurora": return .softAurora
         case "materialFirst", "designerC", "material": return .materialFirst
-        case "godRays": return .quietMesh // rejected look — fall back to A
+        case "godRays": return .paperMesh // rejected — map to captain pick
         default: return .shippingDefault
         }
     }
@@ -29,31 +29,22 @@ enum AtmosphereStyle: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
+        case .paperMesh: "Paper Mesh (default)"
         case .quietMesh: "A — Quiet Mesh"
         case .softAurora: "B — Soft Aurora"
         case .materialFirst: "C — Material First"
         }
     }
 
-    var shortTitle: String {
-        switch self {
-        case .quietMesh: "Quiet Mesh"
-        case .softAurora: "Soft Aurora"
-        case .materialFirst: "Material First"
-        }
-    }
-
     static let defaultsKey = "intake.atmosphereStyle"
-    static var previewChoices: [AtmosphereStyle] { [.quietMesh, .softAurora, .materialFirst] }
-    /// Default while captain undecided — calm utility (A), not rejected God Rays.
-    static let shippingDefault: AtmosphereStyle = .quietMesh
+    static var previewChoices: [AtmosphereStyle] {
+        [.paperMesh, .quietMesh, .softAurora, .materialFirst]
+    }
+    static let shippingDefault: AtmosphereStyle = .paperMesh
 }
 
 enum AtmosphereSurface: Sendable {
-    /// Full Settings window wash (behind sidebar + chrome). Detail content stays clear of mesh for A.
     case settingsWindow
-    /// Settings detail column — usually system Form; A uses none.
     case settingsDetail
-    /// Activity window full-bleed behind list / empty state.
     case activity
 }

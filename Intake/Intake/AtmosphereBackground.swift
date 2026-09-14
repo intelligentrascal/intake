@@ -24,6 +24,8 @@ struct AtmosphereBackground: View {
                 IntakeColor.surface
             } else {
                 switch style {
+                case .paperMesh:
+                    PaperMeshAtmosphere(surface: surface, animated: !freeze)
                 case .quietMesh:
                     QuietMeshAtmosphere(surface: surface, animated: !freeze)
                 case .softAurora:
@@ -35,6 +37,26 @@ struct AtmosphereBackground: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+
+
+// MARK: - Paper Mesh (captain default)
+
+struct PaperMeshAtmosphere: View {
+    var surface: AtmosphereSurface
+    var animated: Bool
+
+    var body: some View {
+        let mapped: PaperMeshBackground.Surface = {
+            switch surface {
+            case .settingsWindow: return .settingsWindow
+            case .settingsDetail: return .settingsDetail
+            case .activity: return .activity
+            }
+        }()
+        PaperMeshBackground(surface: mapped, animated: animated)
     }
 }
 
