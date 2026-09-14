@@ -36,3 +36,8 @@ Package.resolved
 design/smoke/
 *.p12
 *.mobileprovision
+
+# Notary / ASC API key material (never commit)
+.asc-notary/
+*.p8
+AuthKey*.p8

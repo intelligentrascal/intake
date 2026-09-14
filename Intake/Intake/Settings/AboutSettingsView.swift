@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct AboutSettingsView: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
         Form {
             Section {
@@ -24,6 +26,9 @@ struct AboutSettingsView: View {
             Section {
                 Link("GitHub repository", destination: githubURL)
                 Link("Security policy", destination: securityURL)
+                Button("Send Feedback…") {
+                    model.openSettings(pane: .feedback)
+                }
             } header: {
                 Text("Links")
             }
