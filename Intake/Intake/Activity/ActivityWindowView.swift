@@ -18,18 +18,19 @@ struct ActivityWindowView: View {
                         systemImage: "list.bullet.clipboard",
                         description: Text("When Intake renames or files a download, it shows up here.")
                     )
+                    .padding(24)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(28)
                 } else {
                     ActivityListView()
+                        .scrollContentBackground(.hidden)
+                        .background(.ultraThinMaterial.opacity(0.55))
                 }
             }
         }
         .frame(minWidth: 520, minHeight: 420)
         .background {
-            ZStack {
-                IntakeMeshBackground(style: .activity, animated: !reduceMotion)
-                Rectangle()
-                    .fill(.background.opacity(0.32))
-            }
+            AtmosphereActivityChrome(reduceMotion: reduceMotion)
         }
         .background(ActivityWindowConfigurator())
         .toolbar {
@@ -193,6 +194,19 @@ struct ActivityRow: View {
             return "Deleted · \(when)"
         case .folderRemoved:
             return "Removed empty folder · \(when)"
+        }
+    }
+}
+
+/// Activity Paper Mesh wash + light scrim for list readability.
+private struct AtmosphereActivityChrome: View {
+    var reduceMotion: Bool
+
+    var body: some View {
+        ZStack {
+            AtmosphereBackground(surface: .activity, animated: !reduceMotion)
+            Rectangle()
+                .fill(.background.opacity(0.28))
         }
     }
 }

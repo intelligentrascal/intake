@@ -5,11 +5,8 @@ struct SettingsRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
-
     var body: some View {
         @Bindable var model = model
-        // Plain HStack — NavigationSplitView under the Settings scene ate clicks
-        // (AX saw only traffic lights; List/Button rows never changed the pane).
         HStack(spacing: 0) {
             SettingsSidebar()
                 .frame(width: 192)
@@ -21,17 +18,19 @@ struct SettingsRootView: View {
                 .id(model.selectedSettingsPane)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .environment(model)
+                .background {
+                    // A: no mesh under Form; B: clear detail (aurora is window-level); C: clear.
+                    AtmosphereBackground(surface: .settingsDetail)
+                }
+        }
+        .background {
+            AtmosphereBackground(surface: .settingsWindow, animated: true)
         }
         .background {
             SettingsWindowConfigurator(title: model.selectedSettingsPane.title)
                 .frame(width: 0, height: 0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-        }
-        .background {
-            if !reduceTransparency && contrast != .increased {
-                IntakeMeshBackground(style: .settingsWash, animated: false)
-            }
         }
         .onAppear {
             SettingsSplitViewAutosave.resetSettingsSplitFrames()
@@ -49,6 +48,7 @@ struct SettingsRootView: View {
 
 private struct SettingsSidebar: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -87,7 +87,13 @@ private struct SettingsSidebar: View {
         }
         .padding(.horizontal, 8)
         .padding(.bottom, 10)
-        .background(.ultraThinMaterial.opacity(0.35))
+        .background {
+            if reduceTransparency {
+                Color(nsColor: .windowBackgroundColor).opacity(0.92)
+            } else {
+                Rectangle().fill(.ultraThinMaterial)
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings sidebar")
     }
@@ -118,7 +124,6 @@ private struct SettingsDetailHost: View {
     }
 }
 
-/// Legacy cleanup for prefs left by the old NavigationSplitView Settings layout.
 enum SettingsSplitViewAutosave {
     static let exactSettingsSplitKey =
         "NSSplitView Subview Frames com_apple_SwiftUI_Settings_window, SidebarNavigationSplitView"

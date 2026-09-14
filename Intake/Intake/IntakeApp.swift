@@ -114,3 +114,4 @@ final class IntakeAppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 }
+
