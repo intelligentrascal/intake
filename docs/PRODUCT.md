@@ -11,7 +11,7 @@ People on macOS who download constantly and want the folder to stay navigable wi
 ## Principles
 
 1. **Lazy folders** — never pre-create empty category folders.
-2. **Rename before route** — clarity first; Arc-like sensible names.
+2. **Rename before route** — clarity first; Arc-like sensible names (local Title Case + small-word exceptions + small product/acronym allowlist — not Arc AI).
 3. **Rules over magic** — deterministic extension/type rules by default; AI is opt-in assist.
 4. **Private by default** — local FS only unless the user enables a provider.
 5. **Reversible cleanup** — surface candidates; user files away or deletes; no silent mass delete.
@@ -45,7 +45,7 @@ The Rules pane also shows **on-device suggestions** from the watch-folder root h
 
 ### Ingest
 1. Detect new stable file in watch folder (ignore partial downloads / `.download` / Quarantine churn).
-2. If **Rename when download finishes** is on (default), rename in place in the watch-folder root with the local, deterministic normalizer. Activity: `renamed` (file still in root). This does **not** wait. Files already inside category folders are not renamed. If the toggle is off, skip this step.
+2. If **Rename when download finishes** is on (default), rename in place in the watch-folder root with the local, deterministic normalizer (structural clean, then **always** Title Case with small-word exceptions and a small allowlist such as `macOS` / `Q1`). Activity: `renamed` (file still in root). This does **not** wait. Files already inside category folders are not renamed. If the toggle is off, skip this step.
 3. If **Automatic organizing** is on, wait until **Wait before organizing** has passed since that **stable** moment (`stableAt` — not when the first byte appeared). Default is **2 hours**. Presets: Immediately, 15 minutes, 1 hour, 2 hours, 1 day. Wait gates **routing/filing only**. Immediately files as soon as the file is stable (right after step 2 when Rename is on). While waiting, Intake stays silent aside from the rename in step 2. If the file is moved or deleted before the wait ends, the pending item is dropped. Changing the wait re-evaluates from the same `stableAt`. Automatic organizing Off still allows step 2; it does not auto-move.
 4. Match rule → ensure destination folder exists → move. Name from step 2 is preserved unless a collision suffix is needed. If Rename was off, rename still happens here when filing (legacy couple). Activity: `moved`.
 5. Log to Activity. Optional OpenRouter (when enabled) still suggests a **folder** for Other only — it does not rename.

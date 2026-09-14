@@ -56,14 +56,92 @@ struct FileNameNormalizerTests {
     }
 
     @Test
-    func leavesAlreadyReadableNamesAlone() {
+    func alwaysReCasesMixedHumanishNames() {
+        // C3: always run casing policy — "Family photo" becomes Title Case.
         let url = URL(fileURLWithPath: "/tmp/Family photo.heic")
-        #expect(normalizer.proposedFileName(for: url) == "Family photo.heic")
+        #expect(normalizer.proposedFileName(for: url) == "Family Photo.heic")
     }
 
     @Test
     func emptyCleanedBaseFallsBackToOriginal() {
         let url = URL(fileURLWithPath: "/tmp/___.pdf")
         #expect(normalizer.proposedFileName(for: url) == "___.pdf")
+    }
+
+    // MARK: IN-14 Title Case policy
+
+    @Test
+    func captainSmokeArcTidyCamelCaseReport() {
+        let url = URL(fileURLWithPath: "/tmp/arc_Tidy_Camel_Case_Report.pdf")
+        #expect(normalizer.proposedFileName(for: url) == "Arc Tidy Camel Case Report.pdf")
+    }
+
+    @Test
+    func captainSmokeBoardUpdateDeckFinal() {
+        let url = URL(fileURLWithPath: "/tmp/board Update deck final.pptx")
+        #expect(normalizer.proposedFileName(for: url) == "Board Update Deck Final.pptx")
+    }
+
+    @Test
+    func smallWordsStayLowercaseExceptEnds() {
+        let url = URL(fileURLWithPath: "/tmp/the_end_of_the_world.txt")
+        #expect(normalizer.proposedFileName(for: url) == "The End of the World.txt")
+    }
+
+    @Test
+    func allowlistPreservesMacOSDespiteCamelSplit() {
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/macOS_All_New_Features.pdf"))
+                == "macOS All New Features.pdf"
+        )
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/MacOS_All_New_Features.pdf"))
+                == "macOS All New Features.pdf"
+        )
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/iPhone_Setup_Guide.pdf"))
+                == "iPhone Setup Guide.pdf"
+        )
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/ios_release_notes.txt"))
+                == "iOS Release Notes.txt"
+        )
+    }
+
+    @Test
+    func allowlistProtectDoesNotLeakInsideGuide() {
+        let name = normalizer.proposedFileName(
+            for: URL(fileURLWithPath: "/tmp/iPhone_setup_guide.pdf")
+        )
+        #expect(name == "iPhone Setup Guide.pdf")
+        #expect(!name.lowercased().contains("intakealw"))
+        #expect(!name.lowercased().contains("zzintake"))
+    }
+
+
+    @Test
+    func helloWorldPreservesZipExtensionCase() {
+        let url = URL(fileURLWithPath: "/tmp/HELLO_WORLD.ZIP")
+        #expect(normalizer.proposedFileName(for: url) == "Hello World.ZIP")
+    }
+
+    @Test
+    func versionTokensKeepLowercaseV() {
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/App_v2.3_Release.dmg"))
+                == "App v2.3 Release.dmg"
+        )
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/Build_B12_Notes.txt"))
+                == "Build b12 Notes.txt"
+        )
+    }
+
+    @Test
+    func applyTitleCasePolicyIsPublicAndIdempotentOnTidyNames() {
+        let once = normalizer.applyTitleCasePolicy("Arc Tidy Camel Case Report")
+        let twice = normalizer.applyTitleCasePolicy(once)
+        #expect(once == "Arc Tidy Camel Case Report")
+        #expect(twice == once)
     }
 }
