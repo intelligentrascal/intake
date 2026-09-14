@@ -1,33 +1,59 @@
 import Foundation
 
-/// IN-12 atmosphere preview picker — Designer will define three drastically different
-/// native directions; captain picks one before live. God Rays stays available as a
-/// hidden/dev option but is **not** the default after captain reject.
+/// IN-12 Designer atmospheres (IN-12-atmospheres.md). Captain picks one after screenshots.
+/// Switch for Mac smoke:
+///   defaults write app.intake.Intake intake.atmosphereStyle quietMesh
+///   defaults write app.intake.Intake intake.atmosphereStyle softAurora
+///   defaults write app.intake.Intake intake.atmosphereStyle materialFirst
+/// Or Debug menu → Atmosphere (live via `@AppStorage`).
 enum AtmosphereStyle: String, CaseIterable, Identifiable, Sendable {
-    /// Prior MeshGradient wash (current default / Apps install).
-    case mesh
-    /// Paper-inspired God Rays (kept for A/B; not default).
-    case godRays
-    /// Placeholder slots for Designer’s three directions (filled when handoff lands).
-    case designerA
-    case designerB
-    case designerC
+    /// A — Quiet Mesh (refined utility).
+    case quietMesh
+    /// B — Soft Aurora Vignette (no rays).
+    case softAurora
+    /// C — Material First (HIG only).
+    case materialFirst
+
+    /// Legacy aliases from hold stub — accepted by defaults / AppStorage.
+    public static func resolve(_ raw: String?) -> AtmosphereStyle {
+        switch raw {
+        case "quietMesh", "designerA", "mesh": return .quietMesh
+        case "softAurora", "designerB", "aurora": return .softAurora
+        case "materialFirst", "designerC", "material": return .materialFirst
+        case "godRays": return .quietMesh // rejected look — fall back to A
+        default: return .shippingDefault
+        }
+    }
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .mesh: "Mesh"
-        case .godRays: "God Rays"
-        case .designerA: "Direction A"
-        case .designerB: "Direction B"
-        case .designerC: "Direction C"
+        case .quietMesh: "A — Quiet Mesh"
+        case .softAurora: "B — Soft Aurora"
+        case .materialFirst: "C — Material First"
         }
     }
 
-    /// Styles offered in a future Settings preview control once Designer ships A/B/C.
-    static var previewChoices: [AtmosphereStyle] { [.mesh, .godRays, .designerA, .designerB, .designerC] }
+    var shortTitle: String {
+        switch self {
+        case .quietMesh: "Quiet Mesh"
+        case .softAurora: "Soft Aurora"
+        case .materialFirst: "Material First"
+        }
+    }
 
-    /// Default for shipping / Apps install while IN-12 is on hold.
-    static let shippingDefault: AtmosphereStyle = .mesh
+    static let defaultsKey = "intake.atmosphereStyle"
+    static var previewChoices: [AtmosphereStyle] { [.quietMesh, .softAurora, .materialFirst] }
+    /// Default while captain undecided — calm utility (A), not rejected God Rays.
+    static let shippingDefault: AtmosphereStyle = .quietMesh
+}
+
+enum AtmosphereSurface: Sendable {
+    /// Full Settings window wash (behind sidebar + chrome). Detail content stays clear of mesh for A.
+    case settingsWindow
+    /// Settings detail column — usually system Form; A uses none.
+    case settingsDetail
+    /// Activity window full-bleed behind list / empty state.
+    case activity
 }
