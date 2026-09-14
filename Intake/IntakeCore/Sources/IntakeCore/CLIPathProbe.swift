@@ -52,12 +52,41 @@ public enum CLIPathProbe: Sendable {
         return ordered.joined(separator: ":")
     }
 
+    /// Detection-only executability that does **not** resolve symlinks.
+    ///
+    /// `FileManager.isExecutableFile(atPath:)` follows the target, which fails in the
+    /// App Sandbox when `claude` → `~/.local/share/...` or `codex` →
+    /// `/opt/homebrew/Caskroom/...` lie outside temporary-exception dirs.
+    /// Prefer `lstat` + execute bits / `faccessat(...AT_SYMLINK_NOFOLLOW)`.
+    public static func isExecutableWithoutResolving(atPath path: String) -> Bool {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return false }
+        let type = info.st_mode & S_IFMT
+        if type == S_IFLNK {
+            // Symlink in a PATH dir counts as installed — do not touch the target.
+            #if canImport(Darwin)
+            if faccessat(AT_FDCWD, path, X_OK, AT_SYMLINK_NOFOLLOW) == 0 {
+                return true
+            }
+            #endif
+            // Darwin symlink modes are often 0755; accept any existing link node.
+            return true
+        }
+        guard type == S_IFREG else { return false }
+        #if canImport(Darwin)
+        if faccessat(AT_FDCWD, path, X_OK, AT_SYMLINK_NOFOLLOW) == 0 {
+            return true
+        }
+        #endif
+        return (info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) != 0
+    }
+
     /// True when `command` is an executable in one of the `PATH` directories.
     /// Names that look like paths (`/` or `\`) are never considered.
     public static func isExecutableOnPath(
         _ command: String,
         path: String,
-        isExecutable: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+        isExecutable: (String) -> Bool = { isExecutableWithoutResolving(atPath: $0) }
     ) -> Bool {
         guard isSimpleCommandName(command) else { return false }
         for directory in path.split(separator: ":", omittingEmptySubsequences: true) {
@@ -157,7 +186,7 @@ public enum OtherAIProviderDetector: Sendable {
     /// Detection-only — never launches a CLI or login shell.
     public static func scan(
         path: String = CLIPathProbe.searchPath(),
-        isExecutable: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+        isExecutable: (String) -> Bool = { CLIPathProbe.isExecutableWithoutResolving(atPath: $0) }
     ) -> [OtherAIProviderPresence] {
         OtherAIProvider.allCases.map {
             presence(for: $0, path: path, isExecutable: isExecutable)

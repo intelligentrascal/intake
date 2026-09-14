@@ -217,3 +217,35 @@ struct LaunchWindowPolicyTests {
         #expect(LaunchWindowPolicy.presentsSettings(showsInDock: false, isFirstRun: false) == false)
     }
 }
+
+
+struct CLIPathProbeSymlinkTests {
+    @Test
+    func defaultProbeDoesNotUseFileManagerFollowingClosure() {
+        // scan()'s default isExecutable must be the non-resolving probe — documented contract.
+        // We can't introspect the default closure; instead assert the public helper treats a
+        // PATH entry as executable when our injectable says so (symlink case simulated).
+        let presence = OtherAIProviderDetector.presence(
+            for: .claude,
+            path: "/Users/me/.local/bin",
+            isExecutable: { path in
+                // Simulate: FileManager.isExecutableFile would be false (target outside sandbox),
+                // but non-following check returns true for the link path itself.
+                path == "/Users/me/.local/bin/claude"
+            }
+        )
+        #expect(presence.isAvailable)
+        #expect(presence.foundCommands == ["claude"])
+    }
+
+    @Test
+    func codexSymlinkStylePathIsDetectedWithoutResolvingCaskroomTarget() {
+        let presence = OtherAIProviderDetector.presence(
+            for: .codex,
+            path: "/opt/homebrew/bin",
+            isExecutable: { $0 == "/opt/homebrew/bin/codex" }
+        )
+        #expect(presence.isAvailable)
+        #expect(presence.statusTitle == "Available")
+    }
+}

@@ -39,11 +39,14 @@ struct IntakeApp: App {
         MenuBarExtra(isInserted: menuBarInserted) {
             MenuBarContentView()
                 .environment(model)
-                .background(ActivityWindowOpenBridge().environment(model))
-                .background(SettingsOpenBridge().environment(model))
         } label: {
+            // Label stays in the hierarchy when the menu is closed — required so
+            // SettingsOpenBridge / ActivityWindowOpenBridge receive Dock reopen asks
+            // even when no Settings/Activity window exists (wc=0).
             MenuBarLabel()
                 .environment(model)
+                .background(ActivityWindowOpenBridge().environment(model))
+                .background(SettingsOpenBridge().environment(model))
         }
         .menuBarExtraStyle(.menu)
 
@@ -87,8 +90,13 @@ final class IntakeAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         guard model.showsInDock else { return }
         guard !model.isSettingsWindowVisible else { return }
+        // Dock click with Finder/Safari frontmost often yields frontmost=true, wc=0
+        // and skips a reliable reopen forward — open Settings on this path too.
+        model.bringPrimaryWindowForward()
         DispatchQueue.main.async { [model] in
-            model.bringPrimaryWindowForward()
+            if !model.isSettingsWindowVisible {
+                model.bringPrimaryWindowForward()
+            }
         }
     }
 

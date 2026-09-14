@@ -12,7 +12,7 @@
 	<true/>
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
-		<string>.local/bin/</string>
+		<string>/.local/bin/</string>
 	</array>
 	<key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
 	<array>

@@ -88,6 +88,8 @@ final class AppModel {
     var showFirstRunTip = false
     var keepOneSurfaceAlert = false
     var activityWindowRequestID: UInt64 = 0
+    /// Bumped so MenuBarExtra `SettingsOpenBridge` calls SwiftUI `openSettings`.
+    var settingsWindowRequestID: UInt64 = 0
     var organizeConfirmPresented = false
     var organizeNothingPresented = false
     var organizeProgressPresented = false
