@@ -77,7 +77,7 @@ struct AISettingsView: View {
             } header: {
                 Text("Other providers")
             } footer: {
-                Text("Detection only — this pane checks PATH, it does not call these CLIs. Install a CLI to enable it in a later release. OpenRouter remains the working provider.")
+                Text("Detection only — checks PATH plus common install dirs (~/.local/bin, Homebrew). Does not call these CLIs. Install a CLI to enable it in a later release. OpenRouter remains the working provider.")
             }
         }
         .formStyle(.grouped)

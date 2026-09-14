@@ -162,6 +162,39 @@ struct CLIPathProbeTests {
     }
 }
 
+
+    @Test
+    func searchPathMergesCommonInstallDirectoriesAfterProcessPath() {
+        let merged = CLIPathProbe.searchPath(
+            processPath: "/custom/bin",
+            extraDirectories: ["/opt/homebrew/bin", "/custom/bin", "/usr/local/bin"]
+        )
+        let parts = merged.split(separator: ":").map(String.init)
+        #expect(parts.first == "/custom/bin")
+        #expect(parts.contains("/opt/homebrew/bin"))
+        #expect(parts.contains("/usr/local/bin"))
+        #expect(parts.filter { $0 == "/custom/bin" }.count == 1)
+    }
+
+    @Test
+    func scanDefaultPathIncludesHomebrewEvenWhenProcessPathIsThin() {
+        // Simulate a GUI-thin PATH that omits Homebrew; detector still finds claude.
+        let results = OtherAIProviderDetector.scan(
+            path: CLIPathProbe.searchPath(
+                processPath: "/usr/bin:/bin",
+                extraDirectories: ["/opt/homebrew/bin", NSHomeDirectory() + "/.local/bin"]
+            ),
+            isExecutable: { candidate in
+                candidate == "/opt/homebrew/bin/claude"
+                    || candidate.hasSuffix("/.local/bin/codex")
+            }
+        )
+        let claude = results.first { $0.provider == .claude }
+        let codex = results.first { $0.provider == .codex }
+        #expect(claude?.isAvailable == true)
+        #expect(codex?.isAvailable == true)
+    }
+
 struct LaunchWindowPolicyTests {
     @Test
     func launchAlwaysHidesActivityAndOpensSettingsWhenDockIsOn() {

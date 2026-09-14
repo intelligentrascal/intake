@@ -71,8 +71,11 @@ final class IntakeAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // IN-11: we fully handle reopen (Settings forward). Returning true lets
+        // AppKit also front the first window — often the suppressed Activity scene —
+        // which makes Dock clicks look dead and can steal key focus from Settings.
         model.bringPrimaryWindowForward()
-        return true
+        return false
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

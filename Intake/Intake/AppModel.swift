@@ -195,7 +195,7 @@ final class AppModel {
             // Defense in depth: `.defaultLaunchBehavior(.suppressed)` should already
             // keep Activity off-screen. Hide anything restoration still presented.
             if LaunchWindowPolicy.hidesActivityAtLaunch {
-                NSApp.windows.filter(\.isIntakeActivityWindow).forEach { $0.orderOut(nil) }
+                self.resignAndHideActivityWindows()
             }
             if LaunchWindowPolicy.presentsSettings(
                 showsInDock: self.showsInDock,
@@ -286,8 +286,21 @@ final class AppModel {
 
     func openSettings(pane: SettingsPane) {
         selectedSettingsPane = pane
+        resignAndHideActivityWindows()
         NSApp.activate(ignoringOtherApps: true)
         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        // IN-11: showSettingsWindow: alone can leave Settings non-key (Activity scene).
+        if let settings = existingSettingsWindow() {
+            front(settings)
+        } else {
+            // Scene may still be materializing — one short retry.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(50))
+                if let settings = self.existingSettingsWindow() {
+                    self.front(settings)
+                }
+            }
+        }
     }
 
     var organizeConfirmTitle: String {
@@ -394,6 +407,27 @@ final class AppModel {
             self.organizeDonePresented = true
             self.scanCleanupCandidates()
             self.flushArrivedDuringOrganize()
+        }
+    }
+
+    private func resignAndHideActivityWindows() {
+        for window in NSApp.windows where window.isIntakeActivityWindow {
+            if window.isKeyWindow {
+                window.resignKey()
+            }
+            window.orderOut(nil)
+        }
+    }
+
+    private func existingSettingsWindow() -> NSWindow? {
+        NSApp.windows.first { window in
+            guard window.isVisible || window.isMiniaturized else { return false }
+            if window.isIntakeActivityWindow { return false }
+            // Settings scene windows use the standard Settings chrome; exclude
+            // status-item / zero-size bridges.
+            let frame = window.frame
+            guard frame.width >= 400, frame.height >= 300 else { return false }
+            return window.styleMask.contains(.titled)
         }
     }
 

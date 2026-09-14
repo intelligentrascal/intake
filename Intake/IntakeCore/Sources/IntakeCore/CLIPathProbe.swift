@@ -2,6 +2,40 @@ import Foundation
 
 /// PATH lookup for optional CLIs. v1 is detection-only: no process is launched.
 public enum CLIPathProbe: Sendable {
+    /// Directories GUI apps often miss because `ProcessInfo` PATH is thinner than a login shell.
+    public static let commonInstallDirectories: [String] = [
+        NSHomeDirectory() + "/.local/bin",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+    ]
+
+    /// Merges `ProcessInfo` PATH with common install dirs (and optional extras).
+    /// Order: process PATH entries first, then common dirs not already listed.
+    public static func searchPath(
+        processPath: String = ProcessInfo.processInfo.environment["PATH"] ?? "",
+        extraDirectories: [String] = commonInstallDirectories
+    ) -> String {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        func append(_ raw: String) {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            let standardized = URL(fileURLWithPath: trimmed, isDirectory: true).path
+            if seen.insert(standardized).inserted {
+                ordered.append(standardized)
+            }
+        }
+        for entry in processPath.split(separator: ":", omittingEmptySubsequences: true) {
+            append(String(entry))
+        }
+        for directory in extraDirectories {
+            append(directory)
+        }
+        return ordered.joined(separator: ":")
+    }
+
     /// True when `command` is an executable in one of the `PATH` directories.
     /// Names that look like paths (`/` or `\`) are never considered.
     public static func isExecutableOnPath(
@@ -103,8 +137,10 @@ public enum OtherAIProviderDetector: Sendable {
         return OtherAIProviderPresence(provider: provider, foundCommands: found)
     }
 
+    /// Scans ProcessInfo PATH plus common Homebrew / `~/.local/bin` install dirs.
+    /// Detection-only — never launches a CLI or login shell.
     public static func scan(
-        path: String = ProcessInfo.processInfo.environment["PATH"] ?? "",
+        path: String = CLIPathProbe.searchPath(),
         isExecutable: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
     ) -> [OtherAIProviderPresence] {
         OtherAIProvider.allCases.map {
