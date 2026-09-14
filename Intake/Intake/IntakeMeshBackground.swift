@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Paper-inspired black + `#1D16E9` mesh. Native SwiftUI only — never a web view.
+/// Legacy Paper-inspired mesh. Settings / Activity prefer `GodRaysBackground` (IN-12).
+/// Kept for Reduce Transparency fallbacks and any remaining call sites.
 struct IntakeMeshBackground: View {
     enum Style {
         case activity

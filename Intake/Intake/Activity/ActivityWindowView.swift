@@ -26,7 +26,7 @@ struct ActivityWindowView: View {
         .frame(minWidth: 520, minHeight: 420)
         .background {
             ZStack {
-                IntakeMeshBackground(style: .activity, animated: !reduceMotion)
+                GodRaysBackground(profile: .activitySubtle, animated: !reduceMotion)
                 Rectangle()
                     .fill(.background.opacity(0.32))
             }

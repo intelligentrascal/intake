@@ -14,6 +14,11 @@ struct SettingsRootView: View {
             SettingsSidebar()
                 .frame(width: 192)
                 .frame(maxHeight: .infinity, alignment: .top)
+                .background {
+                    if !reduceTransparency && contrast != .increased {
+                        GodRaysBackground(profile: .settingsSidebar, animated: true)
+                    }
+                }
 
             Divider()
 
@@ -21,17 +26,17 @@ struct SettingsRootView: View {
                 .id(model.selectedSettingsPane)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .environment(model)
+                .background {
+                    if !reduceTransparency && contrast != .increased {
+                        GodRaysBackground(profile: .settingsDetail, animated: true)
+                    }
+                }
         }
         .background {
             SettingsWindowConfigurator(title: model.selectedSettingsPane.title)
                 .frame(width: 0, height: 0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-        }
-        .background {
-            if !reduceTransparency && contrast != .increased {
-                IntakeMeshBackground(style: .settingsWash, animated: false)
-            }
         }
         .onAppear {
             SettingsSplitViewAutosave.resetSettingsSplitFrames()
@@ -87,7 +92,8 @@ private struct SettingsSidebar: View {
         }
         .padding(.horizontal, 8)
         .padding(.bottom, 10)
-        .background(.ultraThinMaterial.opacity(0.35))
+        // Light material so sidebar labels stay readable over god rays.
+        .background(.ultraThinMaterial.opacity(0.45))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings sidebar")
     }
