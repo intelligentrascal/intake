@@ -198,27 +198,15 @@ struct ActivityRow: View {
     }
 }
 
-/// Activity atmosphere + optional center scrim depending on selected Designer style.
+/// Activity Paper Mesh wash + light scrim for list readability.
 private struct AtmosphereActivityChrome: View {
     var reduceMotion: Bool
-    @AppStorage(AtmosphereStyle.defaultsKey) private var atmosphereRaw = AtmosphereStyle.shippingDefault.rawValue
-
-    private var atmosphere: AtmosphereStyle {
-        AtmosphereStyle.resolve(atmosphereRaw)
-    }
 
     var body: some View {
         ZStack {
-            AtmosphereBackground(
-                style: atmosphere,
-                surface: .activity,
-                animated: !reduceMotion
-            )
-            // Soft center panel so list text stays readable on A/B.
-            if atmosphere != .materialFirst {
-                Rectangle()
-                    .fill(.background.opacity(atmosphere == .softAurora ? 0.22 : 0.28))
-            }
+            AtmosphereBackground(surface: .activity, animated: !reduceMotion)
+            Rectangle()
+                .fill(.background.opacity(0.28))
         }
     }
 }

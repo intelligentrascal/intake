@@ -34,10 +34,6 @@ struct IntakeApp: App {
                     model.openActivity()
                 }
             }
-            // IN-12 preview — Mac smoke switches A/B/C without rebuild.
-            CommandMenu("Atmosphere") {
-                AtmosphereMenuCommands()
-            }
         }
 
         MenuBarExtra(isInserted: menuBarInserted) {
@@ -119,21 +115,3 @@ final class IntakeAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Debug / smoke picker for Designer atmospheres A/B/C.
-private struct AtmosphereMenuCommands: View {
-    @AppStorage(AtmosphereStyle.defaultsKey) private var atmosphereRaw = AtmosphereStyle.shippingDefault.rawValue
-
-    var body: some View {
-        ForEach(AtmosphereStyle.previewChoices) { style in
-            Button {
-                atmosphereRaw = style.rawValue
-            } label: {
-                if AtmosphereStyle.resolve(atmosphereRaw) == style {
-                    Text("✓ \(style.title)")
-                } else {
-                    Text(style.title)
-                }
-            }
-        }
-    }
-}

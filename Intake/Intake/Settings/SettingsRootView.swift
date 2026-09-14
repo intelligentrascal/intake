@@ -5,12 +5,6 @@ struct SettingsRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
-    @AppStorage(AtmosphereStyle.defaultsKey) private var atmosphereRaw = AtmosphereStyle.shippingDefault.rawValue
-
-    private var atmosphere: AtmosphereStyle {
-        AtmosphereStyle.resolve(atmosphereRaw)
-    }
-
     var body: some View {
         @Bindable var model = model
         HStack(spacing: 0) {
@@ -26,11 +20,11 @@ struct SettingsRootView: View {
                 .environment(model)
                 .background {
                     // A: no mesh under Form; B: clear detail (aurora is window-level); C: clear.
-                    AtmosphereBackground(style: atmosphere, surface: .settingsDetail)
+                    AtmosphereBackground(surface: .settingsDetail)
                 }
         }
         .background {
-            AtmosphereBackground(style: atmosphere, surface: .settingsWindow, animated: true)
+            AtmosphereBackground(surface: .settingsWindow, animated: true)
         }
         .background {
             SettingsWindowConfigurator(title: model.selectedSettingsPane.title)
