@@ -89,9 +89,23 @@ struct FileNameNormalizerTests {
     }
 
     @Test
-    func allowlistPreservesMacOS() {
-        let url = URL(fileURLWithPath: "/tmp/macOS_All_New_Features.pdf")
-        #expect(normalizer.proposedFileName(for: url) == "macOS All New Features.pdf")
+    func allowlistPreservesMacOSDespiteCamelSplit() {
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/macOS_All_New_Features.pdf"))
+                == "macOS All New Features.pdf"
+        )
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/MacOS_All_New_Features.pdf"))
+                == "macOS All New Features.pdf"
+        )
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/iPhone_Setup_Guide.pdf"))
+                == "iPhone Setup Guide.pdf"
+        )
+        #expect(
+            normalizer.proposedFileName(for: URL(fileURLWithPath: "/tmp/ios_release_notes.txt"))
+                == "iOS Release Notes.txt"
+        )
     }
 
     @Test

@@ -48,7 +48,10 @@ public struct FileNameNormalizer: Sendable, Equatable {
         name = name.replacingOccurrences(of: "+", with: " ")
         name = name.replacingOccurrences(of: "_", with: " ")
         name = replaceNonDateHyphens(in: name)
-        name = splitCamelCase(name)
+        // Protect macOS / iPhone / … before camel split (otherwise macOS → "mac OS").
+        let protected = protectCamelAllowlistTokens(name)
+        name = splitCamelCase(protected.text)
+        name = restoreCamelAllowlistTokens(name, placeholders: protected.placeholders)
         name = stripDownloadDecorations(name)
         name = name
             .split(whereSeparator: \.isWhitespace)
@@ -133,6 +136,48 @@ public struct FileNameNormalizer: Sendable, Equatable {
             return "b" + word.dropFirst()
         }
         return nil
+    }
+
+
+    /// Tokens that must not be broken by `splitCamelCase` (matched case-insensitively).
+    private static var camelProtectTokens: [String] {
+        // Longest first so macOS wins over OS-ish fragments.
+        Array(Set(casingAllowlist.values)).sorted { $0.count > $1.count }
+    }
+
+    private func protectCamelAllowlistTokens(
+        _ name: String
+    ) -> (text: String, placeholders: [String: String]) {
+        var text = name
+        var placeholders: [String: String] = [:]
+        for (index, token) in Self.camelProtectTokens.enumerated() {
+            let placeholder = "⟦A\(index)⟧"
+            var searchStart = text.startIndex
+            while searchStart < text.endIndex {
+                let slice = text[searchStart...]
+                guard let range = slice.range(of: token, options: [.caseInsensitive]) else {
+                    break
+                }
+                // Only protect when this occurrence contains an interior lower→Upper
+                // boundary (the case camel-split would break), or equals the token.
+                let matched = String(text[range])
+                placeholders[placeholder] = Self.casingAllowlist[matched.lowercased()] ?? token
+                text.replaceSubrange(range, with: placeholder)
+                searchStart = text.index(range.lowerBound, offsetBy: placeholder.count)
+            }
+        }
+        return (text, placeholders)
+    }
+
+    private func restoreCamelAllowlistTokens(
+        _ name: String,
+        placeholders: [String: String]
+    ) -> String {
+        var text = name
+        for (placeholder, canonical) in placeholders {
+            text = text.replacingOccurrences(of: placeholder, with: canonical)
+        }
+        return text
     }
 
     private func replaceNonDateHyphens(in name: String) -> String {
