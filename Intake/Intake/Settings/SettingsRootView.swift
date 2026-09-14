@@ -1,36 +1,40 @@
+import AppKit
 import SwiftUI
 
 struct SettingsRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
         @Bindable var model = model
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            List(selection: sidebarSelection) {
-                ForEach(SettingsPane.allCases) { pane in
-                    Label(pane.title, systemImage: pane.systemImage)
-                        .tag(Optional(pane))
-                        .padding(.vertical, 3)
-                }
-            }
-            .listStyle(.sidebar)
-            .navigationTitle("Intake")
-            .navigationSplitViewColumnWidth(min: 160, ideal: 192, max: 240)
-        } detail: {
+        // Plain HStack — NavigationSplitView under the Settings scene ate clicks
+        // (AX saw only traffic lights; List/Button rows never changed the pane).
+        HStack(spacing: 0) {
+            SettingsSidebar()
+                .frame(width: 192)
+                .frame(maxHeight: .infinity, alignment: .top)
+
+            Divider()
+
             SettingsDetailHost()
                 .id(model.selectedSettingsPane)
-                .navigationTitle(model.selectedSettingsPane.title)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .environment(model)
-                .frame(minWidth: 480, alignment: .topLeading)
         }
-        .navigationSplitViewStyle(.balanced)
+        .background {
+            SettingsWindowConfigurator(title: model.selectedSettingsPane.title)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
         .background {
             if !reduceTransparency && contrast != .increased {
                 IntakeMeshBackground(style: .settingsWash, animated: false)
             }
+        }
+        .onAppear {
+            SettingsSplitViewAutosave.resetSettingsSplitFrames()
         }
         .alert(
             "Keep one way to open Intake",
@@ -41,18 +45,51 @@ struct SettingsRootView: View {
             Text("Turn off Dock or the menu bar, not both — otherwise there’s no icon to reopen Intake.")
         }
     }
+}
 
-    /// `List(selection:)` needs an Optional binding — a non-optional enum
-    /// is the usual source of missing / sticky sidebar highlight.
-    private var sidebarSelection: Binding<SettingsPane?> {
-        Binding(
-            get: { model.selectedSettingsPane },
-            set: { pane in
-                if let pane {
+private struct SettingsSidebar: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Intake")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.top, 12)
+                .padding(.bottom, 6)
+                .accessibilityAddTraits(.isHeader)
+
+            ForEach(SettingsPane.allCases) { pane in
+                Button {
                     model.selectedSettingsPane = pane
+                } label: {
+                    Label(pane.title, systemImage: pane.systemImage)
+                        .labelStyle(.titleAndIcon)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .background {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(model.selectedSettingsPane == pane
+                              ? Color.accentColor.opacity(0.18)
+                              : Color.clear)
+                }
+                .foregroundStyle(.primary)
+                .accessibilityLabel(pane.title)
+                .accessibilityAddTraits(model.selectedSettingsPane == pane ? .isSelected : [])
+                .accessibilityHint("Show \(pane.title) settings")
             }
-        )
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.bottom, 10)
+        .background(.ultraThinMaterial.opacity(0.35))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Settings sidebar")
     }
 }
 
@@ -60,19 +97,44 @@ private struct SettingsDetailHost: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        switch model.selectedSettingsPane {
-        case .general:
-            GeneralSettingsView()
-        case .rules:
-            RulesSettingsView()
-        case .cleanup:
-            CleanupSettingsView()
-        case .activity:
-            ActivitySettingsView()
-        case .ai:
-            AISettingsView()
-        case .about:
-            AboutSettingsView()
+        Group {
+            switch model.selectedSettingsPane {
+            case .general:
+                GeneralSettingsView()
+            case .rules:
+                RulesSettingsView()
+            case .cleanup:
+                CleanupSettingsView()
+            case .activity:
+                ActivitySettingsView()
+            case .ai:
+                AISettingsView()
+            case .about:
+                AboutSettingsView()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityLabel("\(model.selectedSettingsPane.title) settings")
+    }
+}
+
+/// Legacy cleanup for prefs left by the old NavigationSplitView Settings layout.
+enum SettingsSplitViewAutosave {
+    static let exactSettingsSplitKey =
+        "NSSplitView Subview Frames com_apple_SwiftUI_Settings_window, SidebarNavigationSplitView"
+
+    static func resetSettingsSplitFrames() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: exactSettingsSplitKey)
+        for key in defaults.dictionaryRepresentation().keys {
+            let lower = key.lowercased()
+            let isSplit = lower.contains("nssplitview") || lower.contains("navigationsplit")
+            let isSettings = lower.contains("com_apple_swiftui_settings")
+                || lower.contains("sidebarnavigationsplitview")
+                || (lower.contains("settings") && lower.contains("split"))
+            if isSplit && isSettings {
+                defaults.removeObject(forKey: key)
+            }
         }
     }
 }

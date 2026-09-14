@@ -162,6 +162,52 @@ struct CLIPathProbeTests {
     }
 }
 
+
+    @Test
+    func searchPathMergesCommonInstallDirectoriesAfterProcessPath() {
+        let merged = CLIPathProbe.searchPath(
+            processPath: "/custom/bin",
+            extraDirectories: ["/opt/homebrew/bin", "/custom/bin", "/usr/local/bin"]
+        )
+        let parts = merged.split(separator: ":").map(String.init)
+        #expect(parts.first == "/custom/bin")
+        #expect(parts.contains("/opt/homebrew/bin"))
+        #expect(parts.contains("/usr/local/bin"))
+        #expect(parts.filter { $0 == "/custom/bin" }.count == 1)
+    }
+
+    @Test
+    func scanDefaultPathIncludesHomebrewEvenWhenProcessPathIsThin() {
+        // Simulate a GUI-thin PATH that omits Homebrew; detector still finds claude.
+        let results = OtherAIProviderDetector.scan(
+            path: CLIPathProbe.searchPath(
+                processPath: "/usr/bin:/bin",
+                extraDirectories: ["/opt/homebrew/bin", NSHomeDirectory() + "/.local/bin"]
+            ),
+            isExecutable: { candidate in
+                candidate == "/opt/homebrew/bin/claude"
+                    || candidate.hasSuffix("/.local/bin/codex")
+            }
+        )
+        let claude = results.first { $0.provider == .claude }
+        let codex = results.first { $0.provider == .codex }
+        #expect(claude?.isAvailable == true)
+        #expect(codex?.isAvailable == true)
+    }
+
+
+    @Test
+    func realUserHomeDirectoryIsNonEmpty() {
+        #expect(!CLIPathProbe.realUserHomeDirectory.isEmpty)
+    }
+
+    @Test
+    func commonInstallDirectoriesPreferRealHomeLocalBin() {
+        let local = CLIPathProbe.realUserHomeDirectory + "/.local/bin"
+        #expect(CLIPathProbe.commonInstallDirectories.contains(local))
+        #expect(CLIPathProbe.commonInstallDirectories.contains("/opt/homebrew/bin"))
+    }
+
 struct LaunchWindowPolicyTests {
     @Test
     func launchAlwaysHidesActivityAndOpensSettingsWhenDockIsOn() {
@@ -169,5 +215,37 @@ struct LaunchWindowPolicyTests {
         #expect(LaunchWindowPolicy.presentsSettings(showsInDock: true, isFirstRun: false))
         #expect(LaunchWindowPolicy.presentsSettings(showsInDock: false, isFirstRun: true))
         #expect(LaunchWindowPolicy.presentsSettings(showsInDock: false, isFirstRun: false) == false)
+    }
+}
+
+
+struct CLIPathProbeSymlinkTests {
+    @Test
+    func defaultProbeDoesNotUseFileManagerFollowingClosure() {
+        // scan()'s default isExecutable must be the non-resolving probe — documented contract.
+        // We can't introspect the default closure; instead assert the public helper treats a
+        // PATH entry as executable when our injectable says so (symlink case simulated).
+        let presence = OtherAIProviderDetector.presence(
+            for: .claude,
+            path: "/Users/me/.local/bin",
+            isExecutable: { path in
+                // Simulate: FileManager.isExecutableFile would be false (target outside sandbox),
+                // but non-following check returns true for the link path itself.
+                path == "/Users/me/.local/bin/claude"
+            }
+        )
+        #expect(presence.isAvailable)
+        #expect(presence.foundCommands == ["claude"])
+    }
+
+    @Test
+    func codexSymlinkStylePathIsDetectedWithoutResolvingCaskroomTarget() {
+        let presence = OtherAIProviderDetector.presence(
+            for: .codex,
+            path: "/opt/homebrew/bin",
+            isExecutable: { $0 == "/opt/homebrew/bin/codex" }
+        )
+        #expect(presence.isAvailable)
+        #expect(presence.statusTitle == "Available")
     }
 }

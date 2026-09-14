@@ -88,6 +88,8 @@ final class AppModel {
     var showFirstRunTip = false
     var keepOneSurfaceAlert = false
     var activityWindowRequestID: UInt64 = 0
+    /// Bumped so MenuBarExtra `SettingsOpenBridge` calls SwiftUI `openSettings`.
+    var settingsWindowRequestID: UInt64 = 0
     var organizeConfirmPresented = false
     var organizeNothingPresented = false
     var organizeProgressPresented = false
@@ -185,6 +187,9 @@ final class AppModel {
     }
 
     func applicationDidFinishLaunching() {
+        // Clear bad Settings split frames before any Settings scene restores them.
+        SettingsSplitViewAutosave.resetSettingsSplitFrames()
+
         applyActivationPolicy()
         scanCleanupCandidates()
         let firstRun = !UserDefaults.standard.bool(forKey: SettingsKey.didShowMenuBarTip)
@@ -195,7 +200,7 @@ final class AppModel {
             // Defense in depth: `.defaultLaunchBehavior(.suppressed)` should already
             // keep Activity off-screen. Hide anything restoration still presented.
             if LaunchWindowPolicy.hidesActivityAtLaunch {
-                NSApp.windows.filter(\.isIntakeActivityWindow).forEach { $0.orderOut(nil) }
+                self.resignAndHideActivityWindows()
             }
             if LaunchWindowPolicy.presentsSettings(
                 showsInDock: self.showsInDock,
@@ -257,12 +262,6 @@ final class AppModel {
         NSApp.setActivationPolicy(showsInDock ? .regular : .accessory)
     }
 
-    func bringPrimaryWindowForward() {
-        // IN-09-dock-crash: Dock / reopen opens Settings — not Activity.
-        // Avoids ActivityWindowFallback SEGV on the reopen path.
-        openSettings(pane: selectedSettingsPane)
-    }
-
     func openActivity() {
         NSApp.activate(ignoringOtherApps: true)
         if let window = existingActivityWindow() {
@@ -286,8 +285,83 @@ final class AppModel {
 
     func openSettings(pane: SettingsPane) {
         selectedSettingsPane = pane
+        // Activity must never steal key when Settings opens (Dock reopen, menu, etc.).
+        resignAndHideActivityWindows()
+        // Prefer SwiftUI openSettings bridge (MenuBarExtra) — AppKit showSettingsWindow:
+        // often no-ops when Settings scene was never opened / no key window.
+        settingsWindowRequestID &+= 1
+        NotificationCenter.default.post(name: .intakeOpenSettings, object: nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.frontSettingsWindow()
+        }
+        // AppKit fallback: send to NSApp (not nil — nil responder chain no-ops with no key window).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            if !self.isSettingsWindowVisible {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: NSApp, from: nil)
+                self.frontSettingsWindow()
+            }
+        }
+        for delay in [0.12, 0.28] as [TimeInterval] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self else { return }
+                // Don't thrash makeKeyAndOrderFront if Settings is already key.
+                if let key = NSApp.keyWindow, self.isUsableSettingsWindow(key) { return }
+                self.frontSettingsWindow()
+            }
+        }
+    }
+
+    /// True when a Settings surface is already on-screen (id stamped or heuristic).
+    /// Broad on purpose: SwiftUI often delays `com_apple_SwiftUI_Settings_window`, and
+    /// a narrow check made `applicationDidBecomeActive` call `openSettings` again while
+    /// Settings was already front — which stole focus and killed sidebar clicks.
+    var isSettingsWindowVisible: Bool {
+        NSApp.windows.contains { isUsableSettingsWindow($0) }
+    }
+
+    /// Settings-like window that is visible and not miniaturized.
+    func isUsableSettingsWindow(_ window: NSWindow) -> Bool {
+        guard window.isVisible, !window.isMiniaturized else { return false }
+        if window.isIntakeActivityWindow { return false }
+        if window.isSwiftUISettingsWindow { return true }
+        let id = window.identifier?.rawValue ?? ""
+        if id.contains("Settings") || id == "intake.settings" { return true }
+        // Untitled / delayed-id Settings panels: titled, non-Activity, app-owned size.
+        if window.styleMask.contains(.titled),
+           !window.className.contains("StatusBar"),
+           window.contentView != nil,
+           window.frame.width >= 500,
+           window.frame.height >= 360 {
+            // Exclude the Activity window by title when id missing.
+            if window.title == "Activity" { return false }
+            return true
+        }
+        return false
+    }
+
+    /// Order the SwiftUI Settings window front by known id / heuristic.
+    func frontSettingsWindow() {
+        let candidates = NSApp.windows.filter { isUsableSettingsWindow($0) }
+        let preferred = candidates.first(where: \.isSwiftUISettingsWindow) ?? candidates.first
+        guard let window = preferred else { return }
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        window.collectionBehavior.insert(.moveToActiveSpace)
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
+    /// Dock / reopen / become-active: Settings is the primary surface (not Activity).
+    /// If Settings is already up, only front it — do not re-enter `openSettings`
+    /// (avoids focus thrash that breaks sidebar navigation).
+    func bringPrimaryWindowForward() {
+        if isSettingsWindowVisible {
+            frontSettingsWindow()
+            return
+        }
+        openSettings(pane: selectedSettingsPane)
     }
 
     var organizeConfirmTitle: String {
@@ -394,6 +468,27 @@ final class AppModel {
             self.organizeDonePresented = true
             self.scanCleanupCandidates()
             self.flushArrivedDuringOrganize()
+        }
+    }
+
+    private func resignAndHideActivityWindows() {
+        for window in NSApp.windows where window.isIntakeActivityWindow {
+            if window.isKeyWindow {
+                window.resignKey()
+            }
+            window.orderOut(nil)
+        }
+    }
+
+    private func existingSettingsWindow() -> NSWindow? {
+        NSApp.windows.first { window in
+            guard window.isVisible || window.isMiniaturized else { return false }
+            if window.isIntakeActivityWindow { return false }
+            // Settings scene windows use the standard Settings chrome; exclude
+            // status-item / zero-size bridges.
+            let frame = window.frame
+            guard frame.width >= 400, frame.height >= 300 else { return false }
+            return window.styleMask.contains(.titled)
         }
     }
 

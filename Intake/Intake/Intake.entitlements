@@ -10,5 +10,16 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/.local/bin/</string>
+	</array>
+	<key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
+	<array>
+		<string>/opt/homebrew/bin/</string>
+		<string>/opt/homebrew/sbin/</string>
+		<string>/usr/local/bin/</string>
+		<string>/usr/local/sbin/</string>
+	</array>
 </dict>
 </plist>
