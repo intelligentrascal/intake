@@ -19,7 +19,7 @@
 
 ## Settings IA (v1)
 
-1. General — watch folder, organize existing, **Automatic organizing**, **Wait before organizing**, Open at login, appearance in macOS (Dock / menu bar)
+1. General — watch folder, organize existing, **Automatic organizing**, **Rename when download finishes**, **Wait before organizing**, Open at login, appearance in macOS (Dock / menu bar)
 2. Rules — editable taxonomy, drag order, custom rules, on-device suggestions
 3. Cleanup — duration threshold, include roots, decision queue
 4. Activity — audit trail of ingest and cleanup (open the dedicated window from here or the menu)
@@ -28,7 +28,11 @@
 
 ### Wait before organizing
 
-General → Organizing, directly under Automatic organizing. Native menu `Picker` (`.pickerStyle(.menu)`). Title **Wait before organizing**. Values: **Immediately**, **15 minutes**, **1 hour**, **2 hours** (default), **1 day**. Footer: “New downloads stay in the folder until this time has passed, so you can open them before Intake files them.” When Automatic organizing is off, the picker stays visible but dimmed; the value is retained. Live watcher only; clock starts at `stableAt` after the stability debounce.
+General → Organizing, directly under Automatic organizing. Native menu `Picker` (`.pickerStyle(.menu)`). Title **Wait before organizing**. Values: **Immediately**, **15 minutes**, **1 hour**, **2 hours** (default), **1 day**. Footer: “New downloads stay in the folder until this time has passed, so you can open them before Intake files them.” When Automatic organizing is off, the picker stays visible but dimmed; the value is retained. Live watcher only; clock starts at `stableAt` after the stability debounce. Wait gates **filing into folders**, not the local rename-on-stable step.
+
+### Rename when download finishes
+
+General → Organizing, next to Automatic organizing / Wait before organizing. Native `Toggle`. Title **Rename when download finishes**. Default **On**. Footer: “Renames the file as soon as the download is stable — on this Mac only. Wait before organizing still delays filing into folders.” Stays enabled when Automatic organizing is off (rename in root, no auto move). Local `FileNameNormalizer` only — not AI / OpenRouter.
 
 ## Activity
 

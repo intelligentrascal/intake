@@ -1,7 +1,7 @@
 import Foundation
 
-/// Wait after a download is **stable** before live auto-organize files it.
-/// Organize Existing does not use this gate.
+/// Wait after a download is **stable** before live auto-organize **routes** it.
+/// Rename-on-stable is not gated here. Organize Existing does not use this gate.
 public enum OrganizingWait: Int, CaseIterable, Identifiable, Sendable, Codable {
     case immediately = 0
     case fifteenMinutes = 900
@@ -34,10 +34,23 @@ public enum OrganizingWait: Int, CaseIterable, Identifiable, Sendable, Codable {
     }
 
     public static func load(from defaults: UserDefaults) -> OrganizingWait {
-        if defaults.object(forKey: defaultsKey) == nil {
+        guard let object = defaults.object(forKey: defaultsKey) else {
             return .default
         }
-        return OrganizingWait(storedSeconds: defaults.integer(forKey: defaultsKey))
+        // `defaults write … 7200` without -int can store a String; integer(forKey:)
+        // then returns 0 → `.immediately`, which skipped Wait in live smoke.
+        let seconds: Int?
+        switch object {
+        case let value as Int:
+            seconds = value
+        case let value as NSNumber:
+            seconds = value.intValue
+        case let value as String:
+            seconds = Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            seconds = nil
+        }
+        return OrganizingWait(storedSeconds: seconds)
     }
 
     public static func persist(_ value: OrganizingWait, to defaults: UserDefaults) {

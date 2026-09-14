@@ -62,58 +62,116 @@ public struct IngestPipeline: Sendable {
         )
     }
 
+    /// Local rename in the watch-folder root. Does not create category folders.
+    /// Files already inside category folders are left alone.
+    public func applyRenameInPlace(
+        at sourceURL: URL,
+        fileManager: FileManager = .default,
+        now: Date = Date()
+    ) throws -> (url: URL, entries: [ActivityEntry]) {
+        let source = sourceURL.standardizedFileURL
+        let sourceFolder = source.deletingLastPathComponent().standardizedFileURL
+        guard sourceFolder == watchFolder.standardizedFileURL else {
+            return (source, [])
+        }
+        guard fileManager.fileExists(atPath: source.path) else {
+            return (source, [])
+        }
+
+        let proposed = normalizer.proposedFileName(for: source)
+        if proposed == source.lastPathComponent {
+            return (source, [])
+        }
+
+        var existing = existingNames(in: watchFolder, fileManager: fileManager)
+        existing.remove(source.lastPathComponent)
+        let uniqueName = Self.uniqued(fileName: proposed, among: existing)
+        let destination = watchFolder.appendingPathComponent(uniqueName, isDirectory: false)
+        if destination.standardizedFileURL == source {
+            return (source, [])
+        }
+
+        try fileManager.moveItem(at: source, to: destination)
+        return (
+            destination,
+            [
+                ActivityEntry(
+                    date: now,
+                    kind: .renamed,
+                    detail: "Renamed \(source.lastPathComponent) to \(uniqueName)",
+                    url: destination,
+                    fileName: uniqueName
+                ),
+            ]
+        )
+    }
+
+    /// Move into the matching lazy category folder. Preserves the current name
+    /// except a collision suffix in the destination.
+    public func applyRoute(
+        at sourceURL: URL,
+        fileManager: FileManager = .default,
+        now: Date = Date()
+    ) throws -> [ActivityEntry] {
+        let source = sourceURL.standardizedFileURL
+        let sourceFolder = source.deletingLastPathComponent().standardizedFileURL
+        guard sourceFolder == watchFolder.standardizedFileURL else {
+            return []
+        }
+        guard fileManager.fileExists(atPath: source.path) else {
+            return []
+        }
+        let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        // Never file an empty placeholder (false-stable / still-writing download).
+        guard size > 0 else {
+            return []
+        }
+
+        let match = DefaultTaxonomy.matchingRule(for: source, rules: rules)
+        let destinationFolderName = match?.folderName ?? FileCategory.other.folderName
+        let destinationDirectory = watchFolder.appendingPathComponent(
+            destinationFolderName,
+            isDirectory: true
+        )
+        try fileManager.createDirectory(
+            at: destinationDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let uniqueName = Self.uniqued(
+            fileName: source.lastPathComponent,
+            among: existingNames(in: destinationDirectory, fileManager: fileManager)
+        )
+        let destination = destinationDirectory.appendingPathComponent(
+            uniqueName,
+            isDirectory: false
+        )
+        try fileManager.moveItem(at: source, to: destination)
+        return [
+            ActivityEntry(
+                date: now,
+                kind: .moved,
+                detail: "Moved \(destination.lastPathComponent) to \(destinationFolderName)",
+                url: destination,
+                fileName: destination.lastPathComponent,
+                destinationFolder: destinationFolderName
+            ),
+        ]
+    }
+
     public func apply(
         _ plan: IngestPlan,
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws -> [ActivityEntry] {
-        var current = plan.sourceURL
-        var entries: [ActivityEntry] = []
-
-        if plan.needsRename {
-            let renamedURL = current
-                .deletingLastPathComponent()
-                .appendingPathComponent(plan.renamedFileName, isDirectory: false)
-            try fileManager.moveItem(at: current, to: renamedURL)
-            current = renamedURL
-            entries.append(
-                ActivityEntry(
-                    date: now,
-                    kind: .renamed,
-                    detail: "Renamed \(plan.sourceURL.lastPathComponent) to \(plan.renamedFileName)",
-                    url: current,
-                    fileName: plan.renamedFileName
-                )
-            )
-        }
-
-        try fileManager.createDirectory(
-            at: plan.destinationDirectory,
-            withIntermediateDirectories: true
+        let renamed = try applyRenameInPlace(
+            at: plan.sourceURL,
+            fileManager: fileManager,
+            now: now
         )
-
-        var destination = plan.destinationURL
-        if fileManager.fileExists(atPath: destination.path) {
-            let uniqueName = Self.uniqued(
-                fileName: plan.renamedFileName,
-                among: existingNames(in: plan.destinationDirectory, fileManager: fileManager)
-            )
-            destination = plan.destinationDirectory.appendingPathComponent(
-                uniqueName,
-                isDirectory: false
-            )
-        }
-
-        try fileManager.moveItem(at: current, to: destination)
+        var entries = renamed.entries
         entries.append(
-            ActivityEntry(
-                date: now,
-                kind: .moved,
-                detail: "Moved \(destination.lastPathComponent) to \(plan.destinationFolderName)",
-                url: destination,
-                fileName: destination.lastPathComponent,
-                destinationFolder: plan.destinationFolderName
-            )
+            contentsOf: try applyRoute(at: renamed.url, fileManager: fileManager, now: now)
         )
         return entries
     }

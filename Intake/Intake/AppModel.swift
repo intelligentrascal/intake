@@ -19,6 +19,12 @@ final class AppModel {
         }
     }
 
+    var renameWhenDownloadFinishes: Bool {
+        didSet {
+            RenameWhenDownloadFinishesPreference.persist(renameWhenDownloadFinishes, to: .standard)
+        }
+    }
+
     var isPaused: Bool {
         !automaticOrganizing
     }
@@ -156,9 +162,12 @@ final class AppModel {
         // (Swift 6 / @Observable rejects self.automaticOrganizing before organizingWait init).
         let autoEnabled = AutomaticOrganizingPreference.isEnabled(in: defaults)
         let waitPreference = OrganizingWait.load(from: defaults)
+        let renameOnFinish = RenameWhenDownloadFinishesPreference.isEnabled(in: defaults)
         organizingWait = waitPreference
         automaticOrganizing = autoEnabled
+        renameWhenDownloadFinishes = renameOnFinish
         AutomaticOrganizingPreference.persist(autoEnabled, to: defaults)
+        RenameWhenDownloadFinishesPreference.persist(renameOnFinish, to: defaults)
         cleanupThresholdDays = defaults.object(forKey: SettingsKey.cleanupDays) as? Int ?? 30
         includeWatchRootInCleanup = defaults.object(forKey: SettingsKey.includeRoot) as? Bool ?? true
         aiSuggestionsEnabled = defaults.bool(forKey: SettingsKey.aiSuggestions)
@@ -221,6 +230,10 @@ final class AppModel {
 
     func setOrganizingWait(_ wait: OrganizingWait) {
         organizingWait = wait
+    }
+
+    func setRenameWhenDownloadFinishes(_ enabled: Bool) {
+        renameWhenDownloadFinishes = enabled
     }
 
     func setPaused(_ paused: Bool) {
@@ -686,13 +699,49 @@ final class AppModel {
             arrivedDuringOrganize.append(url)
             return
         }
-        rememberStable(url, stableAt: stableAt)
+        let current = applyRenameOnStableIfNeeded(url)
+        rememberStable(current, stableAt: stableAt)
         if isPaused {
-            arrivedWhilePaused.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
-            arrivedWhilePaused.append(url)
+            arrivedWhilePaused.removeAll { $0.standardizedFileURL == current.standardizedFileURL }
+            arrivedWhilePaused.append(current)
             return
         }
         reevaluateWaitingForAge()
+    }
+
+    private var liveIngestPolicy: LiveIngestPolicy {
+        LiveIngestPolicy(
+            renameWhenDownloadFinishes: renameWhenDownloadFinishes,
+            automaticOrganizing: automaticOrganizing
+        )
+    }
+
+    private func applyRenameOnStableIfNeeded(_ url: URL) -> URL {
+        guard liveIngestPolicy.shouldRenameOnStable else { return url }
+        let processor = OrganizeExistingProcessor(
+            watchFolder: watchFolder,
+            rules: rules,
+            ignorePolicy: ignorePolicy
+        )
+        switch processor.processOne(url, mode: .renameInPlace) {
+        case .organized(let entries):
+            entries.reversed().forEach(record)
+            let current = entries.last?.url ?? url
+            // Prevent the watcher from treating the renamed root name as a new download.
+            watcher.acknowledgeRootFile(named: current.lastPathComponent)
+            if current.standardizedFileURL != url.standardizedFileURL {
+                watcher.acknowledgeRootFile(named: url.lastPathComponent)
+            }
+            return current
+        case .skipped(let entry):
+            record(entry)
+            return url
+        case .error(let entry):
+            record(entry)
+            return url
+        case .notInWatchRoot:
+            return url
+        }
     }
 
     private func rememberStable(_ url: URL, stableAt: Date) {
@@ -713,9 +762,22 @@ final class AppModel {
             wait: organizingWait
         )
         waitingForAge = partitioned.waiting
+        var deferred: [PendingStableFile] = []
         for item in partitioned.ready {
-            applyIngest(item.url)
+            // Belt-and-suspenders: never route before Wait even if partition misfires.
+            guard liveIngestPolicy.shouldRoute(
+                stableAt: item.stableAt,
+                wait: organizingWait
+            ) else {
+                deferred.append(item)
+                continue
+            }
+            if !applyIngest(item.url) {
+                // Empty / still-writing — keep waiting with original stableAt.
+                deferred.append(item)
+            }
         }
+        waitingForAge.append(contentsOf: deferred)
 
         guard let next = waitingForAge.min(by: { $0.stableAt < $1.stableAt }) else { return }
         let delay = FileAgeGate.delayUntilEligible(stableAt: next.stableAt, wait: organizingWait)
@@ -727,23 +789,36 @@ final class AppModel {
         }
     }
 
-    private func applyIngest(_ url: URL) {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
+    /// Returns `false` when the file should stay queued (missing, empty, or not routed yet).
+    @discardableResult
+    private func applyIngest(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return true }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if size <= 0 {
+            return false
+        }
         let processor = OrganizeExistingProcessor(
             watchFolder: watchFolder,
             rules: rules,
             ignorePolicy: ignorePolicy
         )
-        switch processor.processOne(url) {
+        switch processor.processOne(url, mode: liveIngestPolicy.applyModeAfterWait) {
         case .organized(let entries):
+            if entries.isEmpty {
+                // routeOnly refused (e.g. empty) — keep queued.
+                return false
+            }
             entries.reversed().forEach(record)
             requestOpenRouterIfNeeded(entries: entries)
+            return true
         case .skipped(let entry):
             record(entry)
+            return true
         case .error(let entry):
             record(entry)
+            return true
         case .notInWatchRoot:
-            break
+            return true
         }
     }
 
@@ -1025,6 +1100,7 @@ final class AppModel {
 private enum SettingsKey {
     static let paused = AutomaticOrganizingPreference.legacyPausedKey
     static let automaticOrganizing = AutomaticOrganizingPreference.currentKey
+    static let renameWhenDownloadFinishes = RenameWhenDownloadFinishesPreference.currentKey
     static let cleanupDays = "intake.cleanupDays"
     static let includeRoot = "intake.includeWatchRoot"
     static let aiSuggestions = "intake.aiSuggestions"

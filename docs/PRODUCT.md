@@ -21,7 +21,7 @@ People on macOS who download constantly and want the folder to stay navigable wi
 
 Users discover Intake from the **Dock** (on by default) and the **menu bar** (on by default, dense 16pt soft-catch template icon). Dock click, reopen, and a normal launch bring **Settings** forward (last pane or General). Activity is an audit window opened from the menu bar (**Open Activity**) or General. First-run shows a one-time tip: Intake lives in the Dock and the menu bar. Show in Dock / Show in menu bar can each be turned off, but **not both** — there must always be an icon that reopens Intake.
 
-**Automatic organizing** is the Settings control for the live watcher (on by default). The menu bar still uses Watching / Paused with Pause / Resume. Delete is never silent. AI is never on by default.
+**Automatic organizing** is the Settings control for the live watcher (on by default). **Rename when download finishes** (on by default) is independent: it locally normalizes the file name in the watch-folder root as soon as the download is stable. The menu bar still uses Watching / Paused with Pause / Resume. Delete is never silent. AI is never on by default.
 
 ## Default taxonomy (under the watch folder)
 
@@ -45,10 +45,10 @@ The Rules pane also shows **on-device suggestions** from the watch-folder root h
 
 ### Ingest
 1. Detect new stable file in watch folder (ignore partial downloads / `.download` / Quarantine churn).
-2. If **Automatic organizing** is on, wait until **Wait before organizing** has passed since that **stable** moment (`stableAt` — not when the first byte appeared). Default is **2 hours**. Presets: Immediately, 15 minutes, 1 hour, 2 hours, 1 day. Immediately files as soon as the file is stable. While waiting, Intake stays silent (no Activity spam). If the file is moved or deleted before the wait ends, the pending item is dropped. Changing the wait re-evaluates from the same `stableAt`.
-3. Propose rename → apply (with undo window if feasible).
-4. Match rule → ensure destination folder exists → move.
-5. Log to Activity.
+2. If **Rename when download finishes** is on (default), rename in place in the watch-folder root with the local, deterministic normalizer. Activity: `renamed` (file still in root). This does **not** wait. Files already inside category folders are not renamed. If the toggle is off, skip this step.
+3. If **Automatic organizing** is on, wait until **Wait before organizing** has passed since that **stable** moment (`stableAt` — not when the first byte appeared). Default is **2 hours**. Presets: Immediately, 15 minutes, 1 hour, 2 hours, 1 day. Wait gates **routing/filing only**. Immediately files as soon as the file is stable (right after step 2 when Rename is on). While waiting, Intake stays silent aside from the rename in step 2. If the file is moved or deleted before the wait ends, the pending item is dropped. Changing the wait re-evaluates from the same `stableAt`. Automatic organizing Off still allows step 2; it does not auto-move.
+4. Match rule → ensure destination folder exists → move. Name from step 2 is preserved unless a collision suffix is needed. If Rename was off, rename still happens here when filing (legacy couple). Activity: `moved`.
+5. Log to Activity. Optional OpenRouter (when enabled) still suggests a **folder** for Other only — it does not rename.
 
 ### Organize existing
 Manual one-shot from the menu bar (**Organize Existing…**) or Settings → General. Scans **watch-folder root only** (does not recurse into Intake-managed category folders). Applies the same ignore policy and rename → route → Activity pipeline as live ingest, and **does not wait** for Wait before organizing. Confirmation before run; cancel stops scheduling new files. Allowed when Automatic organizing is off (does not turn watching back on). Never runs automatically on launch. Lazy folders only.

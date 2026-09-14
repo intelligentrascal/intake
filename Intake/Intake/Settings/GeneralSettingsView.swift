@@ -37,7 +37,7 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Watch folder")
             } footer: {
-                Text("Intake waits until a download is stable, then renames it and files it into a typed folder. Folders appear only when needed.")
+                Text("Intake waits until a download is stable, then can rename it in place. Filing into typed folders still follows Wait before organizing. Folders appear only when needed.")
             }
             Section {
                 Button(OrganizeExistingCopy.menuTitle) {
@@ -61,6 +61,13 @@ struct GeneralSettingsView: View {
                         set: { model.setAutomaticOrganizing($0) }
                     )
                 )
+                Toggle(
+                    RenameOnStableCopy.toggleTitle,
+                    isOn: Binding(
+                        get: { model.renameWhenDownloadFinishes },
+                        set: { model.setRenameWhenDownloadFinishes($0) }
+                    )
+                )
                 Picker("Wait before organizing", selection: Binding(
                     get: { model.organizingWait },
                     set: { model.setOrganizingWait($0) }
@@ -78,7 +85,10 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("Organizing")
             } footer: {
-                Text("New downloads stay in the folder until this time has passed, so you can open them before Intake files them.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(RenameOnStableCopy.footer)
+                    Text("New downloads stay in the folder until this time has passed, so you can open them before Intake files them.")
+                }
             }
             Section {
                 Toggle(
