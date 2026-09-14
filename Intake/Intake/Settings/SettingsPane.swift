@@ -6,6 +6,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Hashable {
     case cleanup
     case activity
     case ai
+    case feedback
     case about
 
     var id: String { rawValue }
@@ -17,6 +18,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Hashable {
         case .cleanup: "Cleanup"
         case .activity: "Activity"
         case .ai: "AI"
+        case .feedback: "Feedback"
         case .about: "About"
         }
     }
@@ -28,6 +30,7 @@ enum SettingsPane: String, CaseIterable, Identifiable, Hashable {
         case .cleanup: "clock.arrow.circlepath"
         case .activity: "list.bullet.clipboard"
         case .ai: "sparkles"
+        case .feedback: "bubble.left.and.bubble.right"
         case .about: "info.circle"
         }
     }

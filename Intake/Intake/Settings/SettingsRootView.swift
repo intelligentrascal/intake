@@ -115,6 +115,8 @@ private struct SettingsDetailHost: View {
                 ActivitySettingsView()
             case .ai:
                 AISettingsView()
+            case .feedback:
+                FeedbackSettingsView()
             case .about:
                 AboutSettingsView()
             }

@@ -19,6 +19,9 @@ People on macOS who download constantly and want the folder to stay navigable wi
 
 ## Findability
 
+**Feedback (v1.1.0):** Settings → Feedback opens a prefilled GitHub Issue in the browser (Option D — no PAT, no server). Menu bar **Send Feedback…** and About **Send Feedback…** open the same pane. Diagnostics default off; screenshots copy to the pasteboard for ⌘V on GitHub.
+
+
 Users discover Intake from the **Dock** (on by default) and the **menu bar** (on by default, dense 16pt soft-catch template icon). Dock click, reopen, and a normal launch bring **Settings** forward (last pane or General). Activity is an audit window opened from the menu bar (**Open Activity**) or General. First-run shows a one-time tip: Intake lives in the Dock and the menu bar. Show in Dock / Show in menu bar can each be turned off, but **not both** — there must always be an icon that reopens Intake.
 
 **Automatic organizing** is the Settings control for the live watcher (on by default). **Rename when download finishes** (on by default) is independent: it locally normalizes the file name in the watch-folder root as soon as the download is stable. The menu bar still uses Watching / Paused with Pause / Resume. Delete is never silent. AI is never on by default.

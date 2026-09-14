@@ -55,6 +55,9 @@ struct MenuBarContentView: View {
             Text("Settings…")
         }
         .keyboardShortcut(",")
+        Button("Send Feedback…") {
+            model.openSettings(pane: .feedback)
+        }
         Divider()
         Button("Quit Intake") {
             NSApplication.shared.terminate(nil)
