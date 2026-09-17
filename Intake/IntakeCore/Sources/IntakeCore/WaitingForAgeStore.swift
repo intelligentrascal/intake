@@ -56,10 +56,12 @@ public enum WaitingForAgeStore: Sendable {
         fileExists: (URL) -> Bool
     ) -> [PendingStableFile] {
         let root = watchRoot.standardizedFileURL
+        // Compare `.path` strings — `URL ==` can be false for equivalent file URLs.
         return stored.filter { item in
             let url = item.url.standardizedFileURL
             guard fileExists(url) else { return false }
-            return url.deletingLastPathComponent().standardizedFileURL == root
+            let parentPath = url.deletingLastPathComponent().standardizedFileURL.path
+            return parentPath == root.path
         }
     }
 }
