@@ -1,54 +1,36 @@
 # Intake
 
-**Native macOS Downloads organizer.** Files arrive, Intake renames them sensibly, then files them into typed folders — only creating folders when needed, and removing empty ones after cleanup.
+A native macOS Downloads organizer — tidy names when downloads finish, then file into folders on your schedule.
 
-Free and open source. Private by design: watching and organizing stay on your Mac.
+**License:** MIT · **Requires:** macOS 26+ · **Privacy:** local by default; network only if you turn on optional AI or open Feedback to GitHub.
 
-> Status: Native macOS SwiftUI app — Dock + menu bar, Settings as the Dock/launch window, Activity audit trail, live Downloads watcher with Wait before organizing, editable rules, Organize Existing, and Cleanup.
+## Download
+
+Get the latest **notarized** DMG from [**Releases**](https://github.com/intelligentrascal/intake/releases/latest):
+
+1. Download `Intake-1.1.0.dmg` (or newer)
+2. Open the DMG and drag **Intake** to Applications
+3. Launch Intake; grant folder access if prompted
+
+Signed with Developer ID and notarized by Apple — double-click should work without Gatekeeper workarounds.
 
 ## What it does
 
-1. **Watch** `~/Downloads` (configurable) in the background
-2. **Rename** new downloads to something human-readable (Arc-style clarity)
-3. **Route** by rules into lazy folders (`Documents`, `Presentations`, `Images`, …)
-4. **Cleanup** — untouched files past a duration show up for File away / Delete / Keep
-5. **Optional AI** — OpenRouter when enabled (Keychain) is the working provider. Ollama / Claude / Cursor / Codex CLIs are detected on PATH (Available vs Not installed) and not called yet. Off by default.
+- Watches your Downloads folder (configurable)
+- **Rename when download finishes** (Title Case + product allowlist like `macOS` / `iPhone`)
+- **Wait before organizing** so fresh downloads stay findable before filing
+- **Organize Existing…** one-shot for what’s already in the watch folder
+- Menu bar + Dock; Settings for rules, cleanup, AI (optional OpenRouter), and **Feedback** (opens a prefilled GitHub Issue)
 
-## Design
+## Build from source
 
-Native **SwiftUI** + **Apple Human Interface Guidelines**. Product tokens and screens: [docs/PRODUCT.md](docs/PRODUCT.md), [docs/DESIGN.md](docs/DESIGN.md).
-
-[Thaw](https://github.com/thaw-app/Thaw) is a **mood board** for polish only. Thaw is GPL-3.0 — we do **not** copy its source.
-
-## Requirements
-
-- macOS 26+
-- Xcode (current stable supporting macOS 26 SDK)
-
-## Repo layout
-
-```text
-Intake/                 # Xcode app (MenuBarExtra + Settings)
-Intake/IntakeCore/      # rules, taxonomy, ingest stubs
-docs/                   # PRODUCT, DESIGN
-.github/                # issue templates
-LICENSE                 # MIT
-```
-
-Open `Intake/Intake.xcodeproj`. Core logic can be tested with `swift test --package-path Intake/IntakeCore`.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-[MIT](LICENSE)
-
-After an Xcode Debug build, register a stable Apps target:
-
-```sh
+```bash
 ./scripts/install-local.sh
+# or open Intake/Intake.xcodeproj in Xcode
 ```
 
-Then Spotlight / `open -b app.intake.Intake` launch `~/Applications/Intake.app`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/PRODUCT.md](docs/PRODUCT.md).
+
+## Security
+
+Report vulnerabilities via [SECURITY.md](SECURITY.md).
