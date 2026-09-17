@@ -16,6 +16,8 @@ struct FeedbackSettingsView: View {
     @State private var showDoneAlert = false
     @State private var doneAlertHadScreenshots = false
     @State private var validationMessage: String?
+    /// Driven via onChange so Form + text fields reliably invalidate the submit button.
+    @State private var canSubmit = false
 
     private let maxScreenshots = 3
 
@@ -36,18 +38,13 @@ struct FeedbackSettingsView: View {
             Section {
                 TextField("Short summary", text: $titleText)
                     .accessibilityLabel("Title")
-                ZStack(alignment: .topLeading) {
-                    if detailsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("What happened, what you expected, steps if it’s a bug")
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 8)
-                            .padding(.leading, 4)
-                            .allowsHitTesting(false)
-                    }
-                    TextEditor(text: $detailsText)
-                        .frame(minHeight: 100)
-                        .accessibilityLabel("Details")
-                }
+                TextField(
+                    "What happened, what you expected, steps if it’s a bug",
+                    text: $detailsText,
+                    axis: .vertical
+                )
+                .lineLimit(5...12)
+                .accessibilityLabel("Details")
             } header: {
                 Text("Report")
             }
@@ -123,6 +120,8 @@ struct FeedbackSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onChange(of: titleText) { _, _ in refreshCanSubmit() }
+        .onChange(of: detailsText) { _, _ in refreshCanSubmit() }
         .alert("Almost done", isPresented: $showDoneAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -134,14 +133,14 @@ struct FeedbackSettingsView: View {
         }
     }
 
-    private var canSubmit: Bool {
-        !titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !detailsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private func refreshCanSubmit() {
+        canSubmit = FeedbackFormValidation.canSubmit(title: titleText, details: detailsText)
     }
 
     private func submit() {
         validationMessage = nil
-        guard canSubmit else {
+        refreshCanSubmit()
+        guard FeedbackFormValidation.canSubmit(title: titleText, details: detailsText) else {
             validationMessage = "Add a title and details before opening GitHub."
             return
         }

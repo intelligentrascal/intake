@@ -34,6 +34,9 @@ final class AppModel {
             arrivedWhilePaused.removeAll()
             waitingForAge.removeAll()
             ageGateTask?.cancel()
+            ageGateHeartbeatTask?.cancel()
+            ageGateHeartbeatTask = nil
+            WaitingForAgeStore.clear(in: .standard)
             persistWatchFolderBookmark()
         }
     }
@@ -148,6 +151,8 @@ final class AppModel {
     @ObservationIgnored
     private var ageGateTask: Task<Void, Never>?
     @ObservationIgnored
+    private var ageGateHeartbeatTask: Task<Void, Never>?
+    @ObservationIgnored
     private var arrivedDuringOrganize: [URL] = []
     @ObservationIgnored
     private var pendingOrganizeScan: OrganizeExistingScan?
@@ -241,6 +246,8 @@ final class AppModel {
         automaticOrganizing = !paused
         if paused {
             ageGateTask?.cancel()
+            ageGateHeartbeatTask?.cancel()
+            ageGateHeartbeatTask = nil
             return
         }
         if wasPaused {
@@ -430,6 +437,7 @@ final class AppModel {
         let files = scan.eligible
         let eligibleSet = Set(files.map(\.standardizedFileURL))
         waitingForAge.removeAll { eligibleSet.contains($0.url) }
+        persistWaitingForAge()
 
         organizeTask = Task { @MainActor in
             for url in skippedURLs where !url.lastPathComponent.hasPrefix(".") {
@@ -750,12 +758,16 @@ final class AppModel {
             return
         }
         waitingForAge.append(PendingStableFile(url: standardized, stableAt: stableAt))
+        persistWaitingForAge()
     }
 
     private func reevaluateWaitingForAge() {
         ageGateTask?.cancel()
         ageGateTask = nil
-        guard automaticOrganizing else { return }
+        guard automaticOrganizing else {
+            ensureAgeGateHeartbeat()
+            return
+        }
 
         let partitioned = FileAgeGate.partition(
             pending: waitingForAge,
@@ -778,6 +790,8 @@ final class AppModel {
             }
         }
         waitingForAge.append(contentsOf: deferred)
+        persistWaitingForAge()
+        ensureAgeGateHeartbeat()
 
         guard let next = waitingForAge.min(by: { $0.stableAt < $1.stableAt }) else { return }
         let delay = FileAgeGate.delayUntilEligible(stableAt: next.stableAt, wait: organizingWait)
@@ -787,6 +801,53 @@ final class AppModel {
             guard !Task.isCancelled else { return }
             self.reevaluateWaitingForAge()
         }
+    }
+
+    /// Defensive 30s heartbeat so eligibility is not missed if the sleep Task is cancelled/lost.
+    private func ensureAgeGateHeartbeat() {
+        guard automaticOrganizing, !waitingForAge.isEmpty else {
+            ageGateHeartbeatTask?.cancel()
+            ageGateHeartbeatTask = nil
+            return
+        }
+        guard ageGateHeartbeatTask == nil else { return }
+        ageGateHeartbeatTask = Task { @MainActor in
+            defer { self.ageGateHeartbeatTask = nil }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard !Task.isCancelled else { return }
+                guard self.automaticOrganizing, !self.waitingForAge.isEmpty else { return }
+                self.reevaluateWaitingForAge()
+            }
+        }
+    }
+
+    private func persistWaitingForAge() {
+        WaitingForAgeStore.save(waitingForAge, to: .standard)
+    }
+
+    /// Restore persisted Wait-queue entries after the watcher seeds `knownNames`.
+    /// Acknowledge those root names so rename/watch does not double-ingest, but keep them in `waitingForAge`.
+    private func restoreWaitingForAgeFromDisk() {
+        let restored = WaitingForAgeStore.restoreExisting(
+            from: .standard,
+            watchRoot: watchFolder
+        )
+        guard !restored.isEmpty else {
+            // Drop stale paths that no longer exist under this root.
+            if WaitingForAgeStore.load(from: .standard).isEmpty == false {
+                WaitingForAgeStore.save(waitingForAge, to: .standard)
+            }
+            return
+        }
+        for item in restored {
+            if !waitingForAge.contains(where: { $0.url == item.url }) {
+                waitingForAge.append(item)
+            }
+            watcher.acknowledgeRootFile(named: item.url.lastPathComponent)
+        }
+        persistWaitingForAge()
+        reevaluateWaitingForAge()
     }
 
     /// Returns `false` when the file should stay queued (missing, empty, or not routed yet).
@@ -995,6 +1056,9 @@ final class AppModel {
                 self?.handleStableFile(url)
             }
         }
+        // Watcher start seeds knownNames with existing root files — restore Wait queue
+        // so pending files remain eligible without mass-organizing the whole Downloads folder.
+        restoreWaitingForAgeFromDisk()
     }
 
     private func record(_ entry: ActivityEntry) {

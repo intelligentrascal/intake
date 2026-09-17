@@ -59,13 +59,31 @@ public enum OrganizingWait: Int, CaseIterable, Identifiable, Sendable, Codable {
 }
 
 /// A watch-root file that has passed stability debounce; the wait clock starts here.
-public struct PendingStableFile: Equatable, Sendable {
+public struct PendingStableFile: Equatable, Sendable, Codable {
     public var url: URL
     public var stableAt: Date
 
     public init(url: URL, stableAt: Date) {
         self.url = url.standardizedFileURL
         self.stableAt = stableAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case stableAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let path = try container.decode(String.self, forKey: .path)
+        url = URL(fileURLWithPath: path).standardizedFileURL
+        stableAt = try container.decode(Date.self, forKey: .stableAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(url.path, forKey: .path)
+        try container.encode(stableAt, forKey: .stableAt)
     }
 }
 
