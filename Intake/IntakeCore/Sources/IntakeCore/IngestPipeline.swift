@@ -100,7 +100,9 @@ public struct IngestPipeline: Sendable {
                     kind: .renamed,
                     detail: "Renamed \(source.lastPathComponent) to \(uniqueName)",
                     url: destination,
-                    fileName: uniqueName
+                    fileName: uniqueName,
+                    beforePath: source.path,
+                    afterPath: destination.path
                 ),
             ]
         )
@@ -154,7 +156,9 @@ public struct IngestPipeline: Sendable {
                 detail: "Moved \(destination.lastPathComponent) to \(destinationFolderName)",
                 url: destination,
                 fileName: destination.lastPathComponent,
-                destinationFolder: destinationFolderName
+                destinationFolder: destinationFolderName,
+                beforePath: source.path,
+                afterPath: destination.path
             ),
         ]
     }

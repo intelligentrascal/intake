@@ -11,20 +11,28 @@ struct ActivityWindowView: View {
             if !model.pendingAISuggestions.isEmpty {
                 AISuggestionList()
             }
-            Group {
-                if model.activity.isEmpty {
-                    ContentUnavailableView(
-                        "No activity yet",
-                        systemImage: "list.bullet.clipboard",
-                        description: Text("When Intake renames or files a download, it shows up here.")
-                    )
-                    .padding(24)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(28)
-                } else {
-                    ActivityListView()
-                        .scrollContentBackground(.hidden)
-                        .background(.ultraThinMaterial.opacity(0.55))
+            ZStack(alignment: .bottom) {
+                Group {
+                    if model.activity.isEmpty {
+                        ContentUnavailableView(
+                            "No activity yet",
+                            systemImage: "list.bullet.clipboard",
+                            description: Text("When Intake renames or files a download, it shows up here.")
+                        )
+                        .padding(24)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(28)
+                    } else {
+                        ActivityListView()
+                            .scrollContentBackground(.hidden)
+                            .background(.ultraThinMaterial.opacity(0.55))
+                    }
+                }
+                if let toast = model.undoToast {
+                    UndoToastBar(toast: toast)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
         }
@@ -46,8 +54,36 @@ struct ActivityWindowView: View {
             }
         }
         .animation(reduceMotion ? nil : .default, value: model.activity.count)
+        .animation(reduceMotion ? nil : .default, value: model.undoToast?.actionID)
         .intakeOrganizeExistingChrome()
         .intakeFirstRunTip()
+    }
+}
+
+private struct UndoToastBar: View {
+    @Environment(AppModel.self) private var model
+    var toast: UndoToastPresentation
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(toast.message)
+                .font(.body)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if toast.showsUndoButton {
+                Button(UndoCopy.undo) {
+                    model.undoLastFromToast()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .frame(minWidth: 44, minHeight: 44)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
@@ -109,6 +145,7 @@ struct ActivityListView: View {
                             model.copyPath(entry.url)
                         }
                         .disabled(entry.url == nil)
+                        undoContextItems(for: entry)
                     }
                     .accessibilityAction(named: "Reveal in Finder") {
                         model.reveal(entry.url)
@@ -127,6 +164,19 @@ struct ActivityListView: View {
         }
     }
 
+    @ViewBuilder
+    private func undoContextItems(for entry: ActivityEntry) -> some View {
+        let eligibility = model.undoEligibility(for: entry)
+        if entry.kind == .renamed || entry.kind == .moved {
+            Divider()
+            Button(UndoCopy.undo) {
+                model.undo(activityID: entry.id)
+            }
+            .disabled(eligibility != .eligible)
+            .help(eligibility.reason ?? UndoCopy.undo)
+        }
+    }
+
     private var selectedEntry: ActivityEntry? {
         guard let selection else { return nil }
         return model.activity.first { $0.id == selection }
@@ -134,10 +184,11 @@ struct ActivityListView: View {
 }
 
 struct ActivityRow: View {
+    @Environment(AppModel.self) private var model
     var entry: ActivityEntry
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             Image(systemName: entry.systemImage)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(symbolStyle)
@@ -157,10 +208,28 @@ struct ActivityRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            undoControl
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(entry.fileName), \(subtitle)")
+    }
+
+    @ViewBuilder
+    private var undoControl: some View {
+        if entry.kind == .renamed || entry.kind == .moved {
+            let eligibility = model.undoEligibility(for: entry)
+            Button(UndoCopy.undo) {
+                model.undo(activityID: entry.id)
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.regular)
+            .frame(minWidth: 44, minHeight: 44)
+            .disabled(eligibility != .eligible)
+            .help(eligibility.reason ?? UndoCopy.undo)
+            .accessibilityLabel(UndoCopy.undo)
+            .accessibilityHint(eligibility.reason ?? "")
+        }
     }
 
     private var symbolStyle: some ShapeStyle {

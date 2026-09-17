@@ -97,6 +97,12 @@ final class AppModel {
     var showFirstRunTip = false
     var keepOneSurfaceAlert = false
     var activityWindowRequestID: UInt64 = 0
+    /// LIFO undo stack (cap 20) for Intake rename/move.
+    var undoService: UndoService
+    /// Bottom Activity toast for last rename/move (~10s).
+    var undoToast: UndoToastPresentation?
+    @ObservationIgnored private var undoToastDismissTask: Task<Void, Never>?
+
     /// Bumped so MenuBarExtra `SettingsOpenBridge` calls SwiftUI `openSettings`.
     var settingsWindowRequestID: UInt64 = 0
     var organizeConfirmPresented = false
@@ -189,6 +195,7 @@ final class AppModel {
         rules = Self.loadRules()
         suggestionMemory = Self.loadSuggestionMemory()
         activity = Self.loadActivity()
+        undoService = UndoService.load(from: .standard)
         snoozedUntil = Self.loadSnooze()
         cleanupCandidates = []
         launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
@@ -465,7 +472,7 @@ final class AppModel {
                 switch processor.processOne(url) {
                 case .organized(let entries):
                     organized += 1
-                    entries.reversed().forEach(self.record)
+                    recordOrganized(entries)
                 case .skipped(let entry):
                     skipped += 1
                     self.record(entry)
@@ -733,7 +740,7 @@ final class AppModel {
         )
         switch processor.processOne(url, mode: .renameInPlace) {
         case .organized(let entries):
-            entries.reversed().forEach(record)
+            recordOrganized(entries)
             let current = entries.last?.url ?? url
             // Prevent the watcher from treating the renamed root name as a new download.
             watcher.acknowledgeRootFile(named: current.lastPathComponent)
@@ -869,7 +876,7 @@ final class AppModel {
                 // routeOnly refused (e.g. empty) — keep queued.
                 return false
             }
-            entries.reversed().forEach(record)
+            recordOrganized(entries)
             requestOpenRouterIfNeeded(entries: entries)
             return true
         case .skipped(let entry):
@@ -944,7 +951,9 @@ final class AppModel {
                     detail: "Moved \(destination.lastPathComponent) to \(folderName)",
                     url: destination,
                     fileName: destination.lastPathComponent,
-                    destinationFolder: folderName
+                    destinationFolder: folderName,
+                    beforePath: url.path,
+                    afterPath: destination.path
                 )
             )
             pruneEmptyManagedFolders()
@@ -1046,7 +1055,7 @@ final class AppModel {
             watchFolder: watchFolder,
             managedFolderNames: managedFolderNames
         ).removeEmptyManagedFolders()
-        entries.reversed().forEach(record)
+        recordOrganized(entries)
     }
 
     private func restartWatcher() {
@@ -1063,6 +1072,126 @@ final class AppModel {
 
     private func record(_ entry: ActivityEntry) {
         activity = ActivityLog.inserting(entry, into: activity)
+        if let action = UndoService.makeAction(from: entry) {
+            undoService.push(action)
+            persistUndoStack()
+            presentUndoToast(for: [action], filed: false)
+        }
+    }
+
+    /// Record organized ingest entries. Preserves Activity newest-first order while
+    /// pushing undo chronologically so LIFO undoes move before rename.
+    private func recordOrganized(_ entries: [ActivityEntry]) {
+        guard !entries.isEmpty else { return }
+        for entry in entries.reversed() {
+            activity = ActivityLog.inserting(entry, into: activity)
+        }
+        var pushed: [UndoAction] = []
+        for entry in entries {
+            if let action = UndoService.makeAction(from: entry) {
+                undoService.push(action)
+                pushed.append(action)
+            }
+        }
+        if !pushed.isEmpty {
+            persistUndoStack()
+            let filed = pushed.contains { $0.kind == .rename } && pushed.contains { $0.kind == .move }
+            presentUndoToast(for: pushed, filed: filed)
+        }
+    }
+
+    private func persistUndoStack() {
+        undoService.save(to: .standard)
+    }
+
+    private func presentUndoToast(for actions: [UndoAction], filed: Bool) {
+        guard let last = actions.last else { return }
+        let message: String
+        if filed,
+           let rename = actions.last(where: { $0.kind == .rename }),
+           let move = actions.last(where: { $0.kind == .move }),
+           let folder = move.destinationFolder {
+            message = UndoCopy.toastFiled(name: rename.displayName, folder: folder)
+        } else {
+            message = UndoService.toastMessage(for: last)
+        }
+        undoToastDismissTask?.cancel()
+        undoToast = UndoToastPresentation(actionID: last.id, message: message)
+        undoToastDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(UndoService.toastDuration * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            if undoToast?.actionID == last.id {
+                undoToast = nil
+            }
+        }
+    }
+
+    func dismissUndoToast() {
+        undoToastDismissTask?.cancel()
+        undoToast = nil
+    }
+
+    func undoEligibility(for entry: ActivityEntry) -> UndoEligibility {
+        undoService.eligibility(for: entry)
+    }
+
+    func undo(activityID: UUID) {
+        guard let action = undoService.action(forActivityID: activityID) else {
+            showUndoFailure(.tooOld)
+            return
+        }
+        performUndo(action)
+    }
+
+    func undoLastFromToast() {
+        guard let toast = undoToast,
+              let action = undoService.actions.first(where: { $0.id == toast.actionID })
+                ?? undoService.last
+        else {
+            dismissUndoToast()
+            return
+        }
+        performUndo(action)
+    }
+
+    private func performUndo(_ action: UndoAction) {
+        let result = undoService.perform(action)
+        persistUndoStack()
+        dismissUndoToast()
+        switch result {
+        case .success(let restored):
+            watcher.acknowledgeRootFile(named: restored.lastPathComponent)
+            if action.afterURL.lastPathComponent != restored.lastPathComponent {
+                watcher.acknowledgeRootFile(named: action.afterURL.lastPathComponent)
+            }
+            // Refresh Activity URL for this row when still listed.
+            if let idx = activity.firstIndex(where: { $0.id == action.activityID }) {
+                var updated = activity[idx]
+                updated.url = restored
+                updated.fileName = restored.lastPathComponent
+                updated.detail = "Undid — restored \(restored.lastPathComponent)"
+                updated.beforePath = nil
+                updated.afterPath = nil
+                activity[idx] = updated
+            }
+            scanCleanupCandidates()
+            refreshSuggestions()
+        case .failure(let eligibility):
+            showUndoFailure(eligibility)
+        }
+    }
+
+    private func showUndoFailure(_ eligibility: UndoEligibility) {
+        let message = eligibility.reason ?? UndoCopy.notUndoable
+        undoToast = UndoToastPresentation(actionID: UUID(), message: message, showsUndoButton: false)
+        undoToastDismissTask?.cancel()
+        undoToastDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(UndoService.toastDuration * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            if undoToast?.showsUndoButton == false {
+                undoToast = nil
+            }
+        }
     }
 
     private func persistActivity() {
@@ -1181,4 +1310,12 @@ private enum SettingsKey {
     static let openRouterEnabled = "intake.openRouterEnabled"
     static let openRouterBaseURL = "intake.openRouterBaseURL"
     static let openRouterModel = "intake.openRouterModel"
+}
+
+
+struct UndoToastPresentation: Identifiable, Equatable {
+    var id: UUID { actionID }
+    var actionID: UUID
+    var message: String
+    var showsUndoButton: Bool = true
 }
