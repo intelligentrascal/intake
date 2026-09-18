@@ -108,54 +108,16 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
         var present: Set<String> = []
         var stillPending = false
         let now = Date()
-        var snapshots: [DownloadFileSnapshot] = []
 
         for url in items {
             let name = url.lastPathComponent
             present.insert(name)
             let values = try? url.resourceValues(forKeys: Set(keys))
             let isDirectory = values?.isDirectory ?? url.hasDirectoryPath
-            if isDirectory {
-                continue
-            }
-            if policy.shouldIgnore(url: url, kind: .appeared, isDirectory: false) {
-                continue
-            }
-            snapshots.append(
-                DownloadFileSnapshot(
-                    url: url,
-                    size: Int64(values?.fileSize ?? 0)
-                )
-            )
-        }
-
-        // Prefer the full download: drop empty collision twins so they cannot be organized later.
-        let removedNames = Set(
-            EmptyFullSiblingDedupe.removeEmptySiblings(
-                among: snapshots
-            ).map(\.lastPathComponent)
-        )
-        if !removedNames.isEmpty {
-            pending = pending.filter { !removedNames.contains($0.key) }
-            pendingSince = pendingSince.filter { !removedNames.contains($0.key) }
-            knownNames.subtract(removedNames)
-            present.subtract(removedNames)
-        }
-
-        for url in items {
-            let name = url.lastPathComponent
-            if removedNames.contains(name) {
-                continue
-            }
-            let values = try? url.resourceValues(forKeys: Set(keys))
-            let isDirectory = values?.isDirectory ?? url.hasDirectoryPath
             if policy.shouldIgnore(url: url, kind: .appeared, isDirectory: isDirectory) {
                 continue
             }
             if knownNames.contains(name) {
-                continue
-            }
-            guard FileManager.default.fileExists(atPath: url.path) else {
                 continue
             }
 
@@ -178,6 +140,13 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
             if pending[name] == snapshot {
                 let since = pendingSince[name] ?? now
                 if now.timeIntervalSince(since) >= Self.minimumStableDwell {
+                    let removed = EmptyFullSiblingDedupe.removeEmptySiblings(of: url, in: folder)
+                    for removedName in removed.map(\.lastPathComponent) {
+                        pending.removeValue(forKey: removedName)
+                        pendingSince.removeValue(forKey: removedName)
+                        knownNames.remove(removedName)
+                        present.remove(removedName)
+                    }
                     knownNames.insert(name)
                     pending.removeValue(forKey: name)
                     pendingSince.removeValue(forKey: name)

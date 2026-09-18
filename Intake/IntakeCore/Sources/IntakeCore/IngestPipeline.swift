@@ -81,6 +81,11 @@ public struct IngestPipeline: Sendable {
         guard DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) else {
             return (source, [])
         }
+        EmptyFullSiblingDedupe.removeEmptySiblings(
+            of: source,
+            in: watchFolder,
+            fileManager: fileManager
+        )
 
         let proposed = normalizer.proposedFileName(for: source)
         if proposed == source.lastPathComponent {
@@ -131,6 +136,11 @@ public struct IngestPipeline: Sendable {
         guard DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) else {
             return []
         }
+        EmptyFullSiblingDedupe.removeEmptySiblings(
+            of: source,
+            in: watchFolder,
+            fileManager: fileManager
+        )
 
         let match = DefaultTaxonomy.matchingRule(for: source, rules: rules)
         let destinationFolderName = match?.folderName ?? FileCategory.other.folderName

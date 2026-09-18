@@ -73,8 +73,7 @@ public struct OrganizeExistingScanner: Sendable {
             options: []
         )) ?? []
 
-        var snapshots: [DownloadFileSnapshot] = []
-        var candidates: [URL] = []
+        var eligible: [URL] = []
         var skipped: [URL] = []
 
         let sorted = items.sorted {
@@ -92,29 +91,11 @@ public struct OrganizeExistingScanner: Sendable {
                 skipped.append(standardized)
                 continue
             }
-            snapshots.append(
-                DownloadFileSnapshot(
-                    url: standardized,
-                    size: DownloadWriteGate.fileSize(at: standardized, fileManager: fileManager)
-                )
-            )
-            candidates.append(standardized)
-        }
-
-        let removed = EmptyFullSiblingDedupe.removeEmptySiblings(
-            among: snapshots,
-            fileManager: fileManager
-        )
-        skipped.append(contentsOf: removed)
-        let removedSet = Set(removed.map(\.standardizedFileURL))
-
-        var eligible: [URL] = []
-        for url in candidates where !removedSet.contains(url.standardizedFileURL) {
-            if DownloadWriteGate.allowsOrganizeOrRename(at: url, fileManager: fileManager) {
-                eligible.append(url)
-            } else {
-                skipped.append(url)
+            if !DownloadWriteGate.allowsOrganizeOrRename(at: standardized, fileManager: fileManager) {
+                skipped.append(standardized)
+                continue
             }
+            eligible.append(standardized)
         }
 
         return OrganizeExistingScan(eligible: eligible, skipped: skipped)
@@ -157,22 +138,10 @@ public struct OrganizeExistingProcessor: Sendable {
         var entries: [ActivityEntry] = []
         var cancelled = false
 
-        let removedSet = Set(
-            EmptyFullSiblingDedupe.removeEmptySiblings(
-                in: watchFolder,
-                fileManager: fileManager
-            ).map(\.standardizedFileURL)
-        )
-
         for (index, url) in urls.enumerated() {
             if isCancelled() {
                 cancelled = true
                 break
-            }
-            if removedSet.contains(url.standardizedFileURL) {
-                skipped += 1
-                onProgress?(index + 1, urls.count)
-                continue
             }
             switch processOne(url, mode: .renameAndRoute, fileManager: fileManager, now: now) {
             case .organized(let produced):

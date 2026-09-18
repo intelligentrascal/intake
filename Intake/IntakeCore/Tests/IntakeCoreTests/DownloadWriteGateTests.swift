@@ -12,6 +12,19 @@ struct DownloadIdentityTests {
         #expect(DownloadIdentity.key(forFileName: "Resurf 2.9.2-121.dmg") == "resurf 2.9.2-121.dmg")
         #expect(DownloadIdentity.key(forFileName: "Resurf 2.9.2-121 2.dmg") == "resurf 2.9.2-121.dmg")
         #expect(DownloadIdentity.key(forFileName: "Quarterly Report 3.pdf") == "quarterly report.pdf")
+        #expect(
+            DownloadIdentity.key(forFileName: "Budget 2024.pdf")
+                == DownloadIdentity.key(forFileName: "Budget 2024 2.pdf")
+        )
+        #expect(DownloadIdentity.key(forFileName: "Budget 2024.pdf") == "budget 2024.pdf")
+        #expect(
+            DownloadIdentity.key(forFileName: "Report 2024.pdf")
+                != DownloadIdentity.key(forFileName: "Report.pdf")
+        )
+        #expect(
+            DownloadIdentity.key(forFileName: "Photo 1.jpg")
+                != DownloadIdentity.key(forFileName: "Photo.jpg")
+        )
     }
 
     @Test
@@ -101,13 +114,46 @@ struct EmptyFullSiblingDedupeTests {
         try Data("installer".utf8).write(to: full)
         try Data().write(to: leftoverEmpty)
 
-        let removed = EmptyFullSiblingDedupe.removeEmptySiblings(in: root, fileManager: fileManager)
+        let removed = EmptyFullSiblingDedupe.removeEmptySiblings(
+            of: full,
+            in: root,
+            fileManager: fileManager
+        )
         #expect(removed.map(\.lastPathComponent) == ["Resurf 2.9.2-121.dmg"])
         #expect(fileManager.fileExists(atPath: empty.path) == false)
         #expect(fileManager.fileExists(atPath: full.path))
         #expect(fileManager.fileExists(atPath: leftoverEmpty.path))
         let remaining = try Data(contentsOf: full)
         #expect(remaining == Data("installer".utf8))
+    }
+
+    @Test
+    func doesNotRemoveAnEmptyNewDownloadJustBecauseAnOlderFullFileExists() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder(prefix: "intake-old-full-new-empty")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let oldFull = root.appendingPathComponent("Report.pdf")
+        let newEmpty = root.appendingPathComponent("Report 2.pdf")
+        try Data("old".utf8).write(to: oldFull)
+        try Data().write(to: newEmpty)
+
+        #expect(
+            EmptyFullSiblingDedupe.removeEmptySiblings(
+                of: newEmpty,
+                in: root,
+                fileManager: fileManager
+            ).isEmpty
+        )
+        #expect(
+            EmptyFullSiblingDedupe.removeEmptySiblings(
+                of: oldFull,
+                in: root,
+                fileManager: fileManager
+            ).isEmpty
+        )
+        #expect(fileManager.fileExists(atPath: newEmpty.path))
+        #expect(fileManager.fileExists(atPath: oldFull.path))
     }
 }
 
@@ -177,7 +223,7 @@ struct OrganizeExistingEmptyWriteGateTests {
     }
 
     @Test
-    func scannerRemovesEmptyTwinWhenAFullSiblingExistsAndKeepsTheFullFileEligible() throws {
+    func scannerSkipsEmptyTwinWithoutDeletingUntilTheFullFileIsFiled() throws {
         let fileManager = FileManager.default
         let root = try makeTempWatchFolder(prefix: "intake-scan-twin")
         defer { try? fileManager.removeItem(at: root) }
@@ -190,8 +236,35 @@ struct OrganizeExistingEmptyWriteGateTests {
         let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         #expect(scan.eligible.map(\.lastPathComponent) == ["Resurf 2.9.2-121 2.dmg"])
         #expect(scan.skipped.map(\.lastPathComponent) == ["Resurf 2.9.2-121.dmg"])
-        #expect(fileManager.fileExists(atPath: empty.path) == false)
+        #expect(fileManager.fileExists(atPath: empty.path))
         #expect(fileManager.fileExists(atPath: full.path))
+    }
+
+    @Test
+    func filingTheFullTwinRemovesTheEmptyPlaceholder() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder(prefix: "intake-file-twin")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let empty = root.appendingPathComponent("Resurf 2.9.2-121.dmg")
+        let full = root.appendingPathComponent("Resurf 2.9.2-121 2.dmg")
+        try Data().write(to: empty)
+        try Data("payload".utf8).write(to: full)
+
+        let processor = OrganizeExistingProcessor(watchFolder: root)
+        switch processor.processOne(full, mode: .renameAndRoute, fileManager: fileManager) {
+        case .organized:
+            #expect(fileManager.fileExists(atPath: empty.path) == false)
+            #expect(
+                fileManager.fileExists(
+                    atPath: root
+                        .appendingPathComponent("Installers", isDirectory: true)
+                        .appendingPathComponent("Resurf 2.9.2-121 2.dmg").path
+                )
+            )
+        default:
+            Issue.record("full twin should be filed")
+        }
     }
 
     @Test

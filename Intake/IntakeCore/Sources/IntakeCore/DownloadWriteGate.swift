@@ -37,8 +37,14 @@ public enum DownloadIdentity: Sendable {
         return rebuilt.lowercased()
     }
 
+    public static func hasCollisionSuffix(fileName: String) -> Bool {
+        key(forFileName: fileName) != fileName.lowercased()
+    }
+
     private static func stripTrailingCollisionSuffix(_ stem: String) -> String {
-        guard let range = stem.range(of: #"\s+\d+$"#, options: .regularExpression) else {
+        // Intake/Finder uniqued suffix is ` N` starting at 2, typically 2–99.
+        // Keep years (` 2024`) and ` 1` in the stem.
+        guard let range = stem.range(of: #"\s+([2-9]|[1-9]\d)$"#, options: .regularExpression) else {
             return stem
         }
         let stripped = String(stem[..<range.lowerBound])
@@ -102,34 +108,58 @@ public enum EmptyFullSiblingDedupe: Sendable {
         }
     }
 
+    /// Deletes empty placeholders that share identity with a **collision-suffixed**
+    /// full file (`Foo 2.dmg` dropping empty `Foo.dmg`). Never deletes because an
+    /// unsuffixed full file exists — that would abort a new `Foo 2` download.
     @discardableResult
     public static func removeEmptySiblings(
+        of url: URL,
         in directory: URL,
         fileManager: FileManager = .default
     ) -> [URL] {
         removeEmptySiblings(
+            of: url,
             among: snapshots(in: directory, fileManager: fileManager),
             fileManager: fileManager
         )
     }
 
-    /// Deletes empty placeholders that still have size ≤ 0 and share identity with a full file.
     @discardableResult
     public static func removeEmptySiblings(
+        of url: URL,
         among files: [DownloadFileSnapshot],
         fileManager: FileManager = .default
     ) -> [URL] {
+        let source = url.standardizedFileURL
+        guard DownloadWriteGate.fileSize(at: source, fileManager: fileManager) > 0 else {
+            return []
+        }
+        // Only the collision-suffixed full copy (`Foo 2.dmg`) may drop an empty
+        // original. Filing `Foo.dmg` must not delete a newly created `Foo 2.dmg`.
+        guard DownloadIdentity.hasCollisionSuffix(fileName: source.lastPathComponent) else {
+            return []
+        }
+        let key = DownloadIdentity.key(forFileName: source.lastPathComponent)
         var removed: [URL] = []
-        for url in emptyURLsSharingIdentityWithFull(files) {
-            guard fileManager.fileExists(atPath: url.path) else { continue }
-            guard DownloadWriteGate.fileSize(at: url, fileManager: fileManager) <= 0 else { continue }
+        for file in files {
+            let candidate = file.url.standardizedFileURL
+            if candidate == source { continue }
+            guard DownloadIdentity.key(forFileName: candidate.lastPathComponent) == key else {
+                continue
+            }
+            guard fileManager.fileExists(atPath: candidate.path) else { continue }
+            guard DownloadWriteGate.fileSize(at: candidate, fileManager: fileManager) <= 0 else {
+                continue
+            }
             do {
-                try fileManager.removeItem(at: url)
-                removed.append(url)
+                try fileManager.removeItem(at: candidate)
+                removed.append(candidate)
             } catch {
                 continue
             }
         }
-        return removed
+        return removed.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
     }
 }
