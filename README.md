@@ -8,7 +8,7 @@ A native macOS Downloads organizer — tidy names when downloads finish, then fi
 
 Get the latest **notarized** DMG from [**Releases**](https://github.com/intelligentrascal/intake/releases/latest):
 
-1. Download `Intake-1.1.0.dmg` (or newer)
+1. Download `Intake-1.2.0.dmg` (or newer)
 2. Open the DMG and drag **Intake** to Applications
 3. Launch Intake; grant folder access if prompted
 
@@ -20,6 +20,7 @@ Signed with Developer ID and notarized by Apple — double-click should work wit
 - **Rename when download finishes** (Title Case + product allowlist like `macOS` / `iPhone`)
 - **Wait before organizing** so fresh downloads stay findable before filing
 - **Organize Existing…** one-shot for what’s already in the watch folder
+- **Undo** recent Intake renames/moves from Activity
 - Menu bar + Dock; Settings for rules, cleanup, AI (optional OpenRouter), and **Feedback** (opens a prefilled GitHub Issue)
 
 ## Build from source
