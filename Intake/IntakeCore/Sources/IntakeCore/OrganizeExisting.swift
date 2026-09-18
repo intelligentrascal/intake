@@ -66,7 +66,7 @@ public struct OrganizeExistingScanner: Sendable {
     /// folders) are not entered, so filed items are left alone.
     public func scan(fileManager: FileManager = .default) -> OrganizeExistingScan {
         let root = watchFolder.standardizedFileURL
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey]
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .fileSizeKey]
         let items = (try? fileManager.contentsOfDirectory(
             at: root,
             includingPropertiesForKeys: keys,
@@ -88,6 +88,10 @@ public struct OrganizeExistingScanner: Sendable {
                 continue
             }
             if ignorePolicy.shouldIgnore(url: standardized, kind: .appeared, isDirectory: false) {
+                skipped.append(standardized)
+                continue
+            }
+            if !DownloadWriteGate.allowsOrganizeOrRename(at: standardized, fileManager: fileManager) {
                 skipped.append(standardized)
                 continue
             }
@@ -177,6 +181,17 @@ public struct OrganizeExistingProcessor: Sendable {
         let source = url.standardizedFileURL
         let isDirectory = (try? source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
         if ignorePolicy.shouldIgnore(url: source, kind: .appeared, isDirectory: isDirectory) {
+            return .skipped(
+                ActivityEntry(
+                    date: now,
+                    kind: .skipped,
+                    detail: "Skipped \(source.lastPathComponent)",
+                    url: source,
+                    fileName: source.lastPathComponent
+                )
+            )
+        }
+        if !DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) {
             return .skipped(
                 ActivityEntry(
                     date: now,

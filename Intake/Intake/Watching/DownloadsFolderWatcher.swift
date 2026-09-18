@@ -140,6 +140,13 @@ nonisolated final class DownloadsFolderWatcher: @unchecked Sendable {
             if pending[name] == snapshot {
                 let since = pendingSince[name] ?? now
                 if now.timeIntervalSince(since) >= Self.minimumStableDwell {
+                    let removed = EmptyFullSiblingDedupe.removeEmptySiblings(of: url, in: folder)
+                    for removedName in removed.map(\.lastPathComponent) {
+                        pending.removeValue(forKey: removedName)
+                        pendingSince.removeValue(forKey: removedName)
+                        knownNames.remove(removedName)
+                        present.remove(removedName)
+                    }
                     knownNames.insert(name)
                     pending.removeValue(forKey: name)
                     pendingSince.removeValue(forKey: name)

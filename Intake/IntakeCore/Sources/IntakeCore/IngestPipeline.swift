@@ -77,6 +77,15 @@ public struct IngestPipeline: Sendable {
         guard fileManager.fileExists(atPath: source.path) else {
             return (source, [])
         }
+        // Never rename an empty placeholder (false-stable / still-writing download).
+        guard DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) else {
+            return (source, [])
+        }
+        EmptyFullSiblingDedupe.removeEmptySiblings(
+            of: source,
+            in: watchFolder,
+            fileManager: fileManager
+        )
 
         let proposed = normalizer.proposedFileName(for: source)
         if proposed == source.lastPathComponent {
@@ -100,7 +109,9 @@ public struct IngestPipeline: Sendable {
                     kind: .renamed,
                     detail: "Renamed \(source.lastPathComponent) to \(uniqueName)",
                     url: destination,
-                    fileName: uniqueName
+                    fileName: uniqueName,
+                    beforePath: source.path,
+                    afterPath: destination.path
                 ),
             ]
         )
@@ -121,11 +132,15 @@ public struct IngestPipeline: Sendable {
         guard fileManager.fileExists(atPath: source.path) else {
             return []
         }
-        let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         // Never file an empty placeholder (false-stable / still-writing download).
-        guard size > 0 else {
+        guard DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) else {
             return []
         }
+        EmptyFullSiblingDedupe.removeEmptySiblings(
+            of: source,
+            in: watchFolder,
+            fileManager: fileManager
+        )
 
         let match = DefaultTaxonomy.matchingRule(for: source, rules: rules)
         let destinationFolderName = match?.folderName ?? FileCategory.other.folderName
@@ -154,7 +169,9 @@ public struct IngestPipeline: Sendable {
                 detail: "Moved \(destination.lastPathComponent) to \(destinationFolderName)",
                 url: destination,
                 fileName: destination.lastPathComponent,
-                destinationFolder: destinationFolderName
+                destinationFolder: destinationFolderName,
+                beforePath: source.path,
+                afterPath: destination.path
             ),
         ]
     }

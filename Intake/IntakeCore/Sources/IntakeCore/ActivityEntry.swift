@@ -17,6 +17,10 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
     public var url: URL?
     public var fileName: String
     public var destinationFolder: String?
+    /// Absolute path before Intake’s change (undo). Optional for older Activity rows.
+    public var beforePath: String?
+    /// Absolute path after Intake’s change (undo).
+    public var afterPath: String?
 
     public var verb: String {
         switch kind {
@@ -51,7 +55,9 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         detail: String,
         url: URL? = nil,
         fileName: String? = nil,
-        destinationFolder: String? = nil
+        destinationFolder: String? = nil,
+        beforePath: String? = nil,
+        afterPath: String? = nil
     ) {
         self.id = id
         self.date = date
@@ -60,5 +66,7 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         self.url = url
         self.fileName = fileName ?? url?.lastPathComponent ?? detail
         self.destinationFolder = destinationFolder
+        self.beforePath = beforePath
+        self.afterPath = afterPath
     }
 }
