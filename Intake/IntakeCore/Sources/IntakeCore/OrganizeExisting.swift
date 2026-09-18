@@ -66,14 +66,15 @@ public struct OrganizeExistingScanner: Sendable {
     /// folders) are not entered, so filed items are left alone.
     public func scan(fileManager: FileManager = .default) -> OrganizeExistingScan {
         let root = watchFolder.standardizedFileURL
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey]
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .fileSizeKey]
         let items = (try? fileManager.contentsOfDirectory(
             at: root,
             includingPropertiesForKeys: keys,
             options: []
         )) ?? []
 
-        var eligible: [URL] = []
+        var snapshots: [DownloadFileSnapshot] = []
+        var candidates: [URL] = []
         var skipped: [URL] = []
 
         let sorted = items.sorted {
@@ -91,7 +92,29 @@ public struct OrganizeExistingScanner: Sendable {
                 skipped.append(standardized)
                 continue
             }
-            eligible.append(standardized)
+            snapshots.append(
+                DownloadFileSnapshot(
+                    url: standardized,
+                    size: DownloadWriteGate.fileSize(at: standardized, fileManager: fileManager)
+                )
+            )
+            candidates.append(standardized)
+        }
+
+        let removed = EmptyFullSiblingDedupe.removeEmptySiblings(
+            among: snapshots,
+            fileManager: fileManager
+        )
+        skipped.append(contentsOf: removed)
+        let removedSet = Set(removed.map(\.standardizedFileURL))
+
+        var eligible: [URL] = []
+        for url in candidates where !removedSet.contains(url.standardizedFileURL) {
+            if DownloadWriteGate.allowsOrganizeOrRename(at: url, fileManager: fileManager) {
+                eligible.append(url)
+            } else {
+                skipped.append(url)
+            }
         }
 
         return OrganizeExistingScan(eligible: eligible, skipped: skipped)
@@ -134,10 +157,22 @@ public struct OrganizeExistingProcessor: Sendable {
         var entries: [ActivityEntry] = []
         var cancelled = false
 
+        let removedSet = Set(
+            EmptyFullSiblingDedupe.removeEmptySiblings(
+                in: watchFolder,
+                fileManager: fileManager
+            ).map(\.standardizedFileURL)
+        )
+
         for (index, url) in urls.enumerated() {
             if isCancelled() {
                 cancelled = true
                 break
+            }
+            if removedSet.contains(url.standardizedFileURL) {
+                skipped += 1
+                onProgress?(index + 1, urls.count)
+                continue
             }
             switch processOne(url, mode: .renameAndRoute, fileManager: fileManager, now: now) {
             case .organized(let produced):
@@ -177,6 +212,17 @@ public struct OrganizeExistingProcessor: Sendable {
         let source = url.standardizedFileURL
         let isDirectory = (try? source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
         if ignorePolicy.shouldIgnore(url: source, kind: .appeared, isDirectory: isDirectory) {
+            return .skipped(
+                ActivityEntry(
+                    date: now,
+                    kind: .skipped,
+                    detail: "Skipped \(source.lastPathComponent)",
+                    url: source,
+                    fileName: source.lastPathComponent
+                )
+            )
+        }
+        if !DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) {
             return .skipped(
                 ActivityEntry(
                     date: now,

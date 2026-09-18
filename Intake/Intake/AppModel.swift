@@ -861,8 +861,7 @@ final class AppModel {
     @discardableResult
     private func applyIngest(_ url: URL) -> Bool {
         guard FileManager.default.fileExists(atPath: url.path) else { return true }
-        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        if size <= 0 {
+        if !DownloadWriteGate.allowsOrganizeOrRename(at: url) {
             return false
         }
         let processor = OrganizeExistingProcessor(

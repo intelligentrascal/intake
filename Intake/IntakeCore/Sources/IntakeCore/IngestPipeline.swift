@@ -77,6 +77,10 @@ public struct IngestPipeline: Sendable {
         guard fileManager.fileExists(atPath: source.path) else {
             return (source, [])
         }
+        // Never rename an empty placeholder (false-stable / still-writing download).
+        guard DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) else {
+            return (source, [])
+        }
 
         let proposed = normalizer.proposedFileName(for: source)
         if proposed == source.lastPathComponent {
@@ -123,9 +127,8 @@ public struct IngestPipeline: Sendable {
         guard fileManager.fileExists(atPath: source.path) else {
             return []
         }
-        let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         // Never file an empty placeholder (false-stable / still-writing download).
-        guard size > 0 else {
+        guard DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) else {
             return []
         }
 
