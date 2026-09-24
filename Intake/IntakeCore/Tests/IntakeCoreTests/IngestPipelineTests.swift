@@ -443,4 +443,84 @@ struct IngestPipelineTests {
         #expect(fileManager.fileExists(atPath: plan.destinationDirectory.path) == false)
         #expect(cleanupEntries.contains { $0.kind == .folderRemoved } == true)
     }
+
+    @Test
+    func liveIngestRouteWithStableAtInDifferentMonthThanCreationDate() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempRoot("live-ingest-stableat")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let rules = [
+            RoutingRule.custom(
+                folderName: "Downloads",
+                extensions: ["pdf"],
+                subfolderPattern: .yearMonth
+            ),
+        ]
+        let pipeline = IngestPipeline(watchFolder: root, rules: rules)
+
+        let source = root.appendingPathComponent("document.pdf")
+        try Data("pdf".utf8).write(to: source)
+
+        // Set file creation date to January 2026
+        let creationDate = Calendar.current.date(from: DateComponents(year: 2026, month: 1, day: 15))!
+        try fileManager.setAttributes([.creationDate: creationDate], ofItemAtPath: source.path)
+
+        // But pass a different stableAt date (September 2026) to simulate live ingest
+        let stableAtDate = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24))!
+        let plan = try #require(pipeline.plan(for: source, stableAt: stableAtDate, fileManager: fileManager))
+
+        // Should use stableAt month, not creation date month
+        #expect(plan.destinationDirectory.lastPathComponent == "2026-09")
+
+        // Apply and verify it lands in the correct folder
+        _ = try pipeline.apply(plan, stableAt: stableAtDate, fileManager: fileManager)
+        #expect(fileManager.fileExists(atPath: plan.destinationURL.path))
+        #expect(plan.destinationURL.path.contains("2026-09"))
+    }
+
+    @Test
+    func organizeExistingPreviewShowsDestinationWithSubfolderAndCorrectIsNewFolder() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempRoot("preview-subfolder")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let rules = [
+            RoutingRule.custom(
+                folderName: "Documents",
+                extensions: ["pdf"],
+                subfolderPattern: .yearMonth
+            ),
+        ]
+        let pipeline = IngestPipeline(watchFolder: root, rules: rules)
+
+        // Create two files
+        let file1 = root.appendingPathComponent("doc1.pdf")
+        try Data("pdf1".utf8).write(to: file1)
+
+        let file2 = root.appendingPathComponent("doc2.pdf")
+        try Data("pdf2".utf8).write(to: file2)
+
+        let scan = OrganizeExistingScan(
+            eligible: [file1, file2],
+            skipped: []
+        )
+
+        let preview = OrganizeExistingPreviewBuilder.build(scan: scan, pipeline: pipeline, fileManager: fileManager)
+
+        // Should have one group for the dated subfolder destination
+        #expect(preview.groups.count == 1)
+        let group = try #require(preview.groups.first)
+
+        // The destination should be the dated subfolder, not the parent category folder
+        #expect(group.destinationDirectory.lastPathComponent.hasPrefix("202"))  // YYYY-MM format
+        let parentFolder = group.destinationDirectory.deletingLastPathComponent()
+        #expect(parentFolder.lastPathComponent == "Documents")
+
+        // isNewFolder should be true since we haven't created the subfolder yet
+        #expect(group.isNewFolder == true)
+
+        // Both files should be in this group
+        #expect(group.items.count == 2)
+    }
 }

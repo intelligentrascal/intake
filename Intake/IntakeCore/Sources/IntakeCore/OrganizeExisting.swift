@@ -303,6 +303,7 @@ public struct OrganizeExistingProcessor: Sendable {
     public func processOne(
         _ url: URL,
         mode: IngestApplyMode = .renameAndRoute,
+        stableAt: Date? = nil,
         fileManager: FileManager = .default,
         now: Date = Date()
     ) -> FileResult {
@@ -332,7 +333,7 @@ public struct OrganizeExistingProcessor: Sendable {
         }
 
         let pipeline = IngestPipeline(watchFolder: watchFolder, rules: rules)
-        guard pipeline.plan(for: source) != nil else {
+        guard pipeline.plan(for: source, stableAt: stableAt) != nil else {
             return .notInWatchRoot
         }
 
@@ -348,14 +349,15 @@ public struct OrganizeExistingProcessor: Sendable {
             case .routeOnly:
                 produced = try pipeline.applyRoute(
                     at: source,
+                    stableAt: stableAt,
                     fileManager: fileManager,
                     now: now
                 )
             case .renameAndRoute:
-                guard let plan = pipeline.plan(for: source) else {
+                guard let plan = pipeline.plan(for: source, stableAt: stableAt) else {
                     return .notInWatchRoot
                 }
-                produced = try pipeline.apply(plan, fileManager: fileManager, now: now)
+                produced = try pipeline.apply(plan, stableAt: stableAt, fileManager: fileManager, now: now)
             }
             return .organized(produced)
         } catch {
