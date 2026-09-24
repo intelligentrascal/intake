@@ -14,7 +14,7 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
     public enum RenameSource: String, Sendable, Equatable, Codable {
         /// The local, deterministic `FileNameNormalizer` (Title Case).
         case titleCase
-        /// The on-device content-aware namer (template + validator).
+        /// The content-aware namer (template + validator).
         case contentAware
     }
 
