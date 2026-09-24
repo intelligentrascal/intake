@@ -64,7 +64,7 @@ struct MenuBarContentView: View {
 }
 
 /// Organize Existing… — a plain button with one watch folder, a menu of
-/// "All watch folders" plus each folder with several.
+/// "All Watch Folders" plus each folder with several.
 struct OrganizeExistingMenu: View {
     @Environment(AppModel.self) private var model
 
@@ -72,7 +72,7 @@ struct OrganizeExistingMenu: View {
         Group {
             if model.hasMultipleWatchFolders {
                 Menu(OrganizeExistingCopy.menuTitle) {
-                    Button("All watch folders") {
+                    Button("All Watch Folders") {
                         model.requestOrganizeExisting()
                     }
                     Divider()

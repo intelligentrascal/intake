@@ -65,7 +65,7 @@ struct ActivityWindowView: View {
     }
 }
 
-/// Activity folder filter: All watch folders, or one watch folder. Rows written
+/// Activity folder filter: All Watch Folders, or one watch folder. Rows written
 /// before multiple watch folders count as the first folder.
 struct ActivityFolderFilterPicker: View {
     @Environment(AppModel.self) private var model
@@ -75,7 +75,7 @@ struct ActivityFolderFilterPicker: View {
             get: { model.activityFolderFilter },
             set: { model.activityFolderFilter = $0 }
         )) {
-            Text("All watch folders").tag(String?.none)
+            Text("All Watch Folders").tag(String?.none)
             Divider()
             ForEach(model.watchFolderProfiles) { profile in
                 Text(profile.displayName).tag(Optional(profile.id))

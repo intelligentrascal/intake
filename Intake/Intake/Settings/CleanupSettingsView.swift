@@ -17,7 +17,7 @@ struct CleanupSettingsView: View {
             Section {
                 if model.hasMultipleWatchFolders {
                     Picker("Watch folder", selection: $model.cleanupFolderScope) {
-                        Text("All watch folders").tag(String?.none)
+                        Text("All Watch Folders").tag(String?.none)
                         Divider()
                         ForEach(model.watchFolderProfiles) { profile in
                             Text(profile.displayName).tag(Optional(profile.id))
