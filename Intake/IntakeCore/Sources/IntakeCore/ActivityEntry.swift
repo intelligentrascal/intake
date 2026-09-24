@@ -54,6 +54,12 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         }
     }
 
+    /// True when Reveal in Finder has at least one path to try (may still need
+    /// Activity-chain resolution when the row's own URL is stale after a move).
+    public var hasRevealablePath: Bool {
+        url != nil || afterPath != nil || beforePath != nil
+    }
+
     public var menuTitle: String {
         "\(fileName) · \(verb)"
     }

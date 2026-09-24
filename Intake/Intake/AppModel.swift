@@ -980,9 +980,33 @@ final class AppModel {
         UserDefaults.standard.set(true, forKey: SettingsKey.didShowMenuBarTip)
     }
 
+    func reveal(_ entry: ActivityEntry?) {
+        guard let entry else { return }
+        if let url = ActivityLog.revealURL(for: entry, in: activity) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            return
+        }
+        if let directory = ActivityLog.revealFallbackDirectory(for: entry) {
+            NSWorkspace.shared.open(directory)
+        }
+    }
+
     func reveal(_ url: URL?) {
         guard let url else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        if let entry = activity.first(where: {
+            $0.url == url || $0.afterPath == url.path || $0.beforePath == url.path
+        }) {
+            reveal(entry)
+            return
+        }
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            return
+        }
+        let parent = url.deletingLastPathComponent()
+        if FileManager.default.fileExists(atPath: parent.path) {
+            NSWorkspace.shared.open(parent)
+        }
     }
 
     func copyPath(_ url: URL?) {

@@ -37,7 +37,7 @@ struct MenuBarContentView: View {
             Divider()
             ForEach(model.recentActivity) { entry in
                 Button(entry.menuTitle) {
-                    model.reveal(entry.url)
+                    model.reveal(entry)
                 }
             }
         }
