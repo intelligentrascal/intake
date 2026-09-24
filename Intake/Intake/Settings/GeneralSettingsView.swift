@@ -61,7 +61,7 @@ struct GeneralSettingsView: View {
                             .id(controller.profileID)
                         WatchFolderOrganizingControls(profile: controller.profile)
                     } label: {
-                        WatchFolderRow(controller: controller) {
+                        WatchFolderRow(controller: controller, pathIsSelectable: false) {
                             pendingRemoval = controller.profile
                         }
                     }
@@ -222,6 +222,10 @@ private struct WatchFolderOrganizingControls: View {
 private struct WatchFolderRow: View {
     @Environment(AppModel.self) private var model
     var controller: WatchFolderController
+    /// False when this row is the label of a DisclosureGroup (several
+    /// folders): selectable text there would eat the click that's supposed
+    /// to expand/collapse the row instead.
+    var pathIsSelectable: Bool = true
     var onRemove: () -> Void
 
     var body: some View {
@@ -235,12 +239,18 @@ private struct WatchFolderRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(profile.displayName)
-                    Text(controller.folder.path)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
+                    Group {
+                        if pathIsSelectable {
+                            Text(controller.folder.path)
+                                .textSelection(.enabled)
+                        } else {
+                            Text(controller.folder.path)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
                 Text(statusText(for: profile))

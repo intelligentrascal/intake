@@ -45,7 +45,7 @@ struct AboutSettingsView: View {
 
     /// Must match what the AI pane actually does: OpenRouter naming sends extracted text off this Mac.
     private var privacyText: String {
-        let base = "Watching, renaming, and filing stay on this Mac. Rule suggestions are computed on-device from Activity and the watch folder. AI is opt-in and off by default; OpenRouter folder suggestions send a file’s name (with its extension) and your rule folder names — never its contents."
+        let base = "Watching, renaming, and filing stay on this Mac. Rule suggestions are computed on-device from Activity and the watch folder. AI is opt-in and off by default; OpenRouter folder suggestions send only a file’s name and your rule folder names — never its source, size, or contents."
         let rename = model.contentAwareRename
         if rename.isEnabled && rename.provider == .openRouter {
             return base + " Content-aware rename is set to OpenRouter, so text extracted from your PDFs and images is sent to OpenRouter."

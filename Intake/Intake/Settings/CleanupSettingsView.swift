@@ -67,6 +67,12 @@ struct CleanupSettingsView: View {
                     guard !Task.isCancelled, thresholdDraftLoaded, !thresholdFieldFocused else { return }
                     commitThresholdDraft()
                 }
+                .onDisappear {
+                    // .task(id:) is cancelled on disappear, so a pending debounce
+                    // never fires — commit explicitly so leaving the pane doesn't
+                    // silently drop the last Stepper change.
+                    commitThresholdDraft()
+                }
                 Toggle(
                     "Include loose files still in the watch folder",
                     isOn: $model.includeWatchRootInCleanup
