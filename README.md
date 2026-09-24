@@ -8,7 +8,7 @@ A native macOS Downloads organizer — tidy names when downloads finish, then fi
 
 Get the latest **notarized** DMG from [**Releases**](https://github.com/intelligentrascal/intake/releases/latest):
 
-1. Download `Intake-1.3.2.dmg` (or newer)
+1. Download `Intake-1.3.3.dmg` (or newer)
 2. Open the DMG and drag **Intake** to Applications
 3. Launch Intake; grant folder access if prompted
 
