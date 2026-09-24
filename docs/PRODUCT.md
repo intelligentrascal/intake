@@ -26,6 +26,8 @@ Users discover Intake from the **Dock** (on by default) and the **menu bar** (on
 
 **Automatic organizing** is the Settings control for the live watcher (on by default). **Rename when download finishes** (on by default) is independent: it locally normalizes the file name in the watch-folder root as soon as the download is stable. The menu bar still uses Watching / Paused with Pause / Resume. Delete is never silent. AI is never on by default.
 
+**Notifications (v1.4, digest):** a master toggle in Settings → General, **off by default**, plus per-type toggles for Filed, Errors, and Cleanup. Turning the master toggle on is the only time Intake asks for notification permission — it is never requested at launch or for an off toggle. Rather than one notification per file, filing entries batch into a single digest that flushes after 5 minutes with no new filings or at 50 entries, whichever comes first, and shows counts by destination folder. A digest covering exactly one filed item offers **Undo** (through the existing Undo path) alongside **Show Activity**, which every digest offers. Errors are always delivered on their own, immediately but throttled to at most one digest a minute. A finished Cleanup scan is summarized once, covering only items not already notified about. Rename-only entries (no move) are left out of the Filed digest by default. System Focus modes and notification settings apply as usual.
+
 ## Default taxonomy (under the watch folder)
 
 | Folder | Typical contents |
