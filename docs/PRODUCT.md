@@ -58,6 +58,20 @@ First-enabled-rule-wins by list order is unchanged. The Rules pane flags rules t
 
 The Rules pane also shows **on-device suggestions** from the watch-folder root histogram and Activity (skipped / Other). Accept creates or updates a persisted rule; Dismiss hides for 30 days; Never suppresses that extension until reset. Suggestions need repeating uncovered types (8 hits, or 5 in 14 days). Cold start is empty — no fake examples. Computation is local; no network; no file contents. Suggestions always propose extension-only rules.
 
+### Date subfolders (v1.4)
+
+A rule can organize files into **date-based subfolders** within its destination folder:
+
+- **None** (default) — no subfolder: `Images/photo.jpg`.
+- **By year** — yearly subfolder: `Images/2026/photo.jpg`.
+- **By year and month** — monthly subfolder: `Images/2026-09/photo.jpg`.
+
+The date comes from:
+- For live ingest: the file's **stable moment** (`stableAt`), the timestamp when Intake first detected the download was complete.
+- For Organize Existing: the file's **date added** (modification date), falling back to **creation date** if unavailable.
+
+Subfolders use the **Gregorian calendar** in the user's current time zone, formatted zero-padded (`YYYY` or `YYYY-MM`). Subfolders are created **lazily** only when the first matching file needs them — the preview marks them as **New folder**. Changing a rule's pattern affects **new filings only**; existing folders keep their structure. Empty date subfolders are removed by the **Cleanup** job the same way managed category folders are, including nested empty subfolders. Undo works through absolute before/after paths, so moving a file out of a date subfolder and running cleanup will remove the empty subfolder.
+
 ## Core flows
 
 ### Ingest

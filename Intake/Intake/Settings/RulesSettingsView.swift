@@ -228,6 +228,7 @@ struct RuleEditorSheet: View {
     @State private var extensionsText: String
     @State private var conditions: [RuleCondition]
     @State private var isEnabled: Bool
+    @State private var subfolderPattern: SubfolderPattern
     @State private var errorMessage: String?
 
     init(item: RuleEditorItem) {
@@ -238,11 +239,13 @@ struct RuleEditorSheet: View {
             _extensionsText = State(initialValue: "")
             _conditions = State(initialValue: [])
             _isEnabled = State(initialValue: true)
+            _subfolderPattern = State(initialValue: .none)
         case .edit(let rule):
             _folderName = State(initialValue: rule.folderName)
             _extensionsText = State(initialValue: rule.extensionsDisplay)
             _conditions = State(initialValue: rule.conditions)
             _isEnabled = State(initialValue: rule.isEnabled)
+            _subfolderPattern = State(initialValue: rule.subfolderPattern)
         }
     }
 
@@ -256,6 +259,11 @@ struct RuleEditorSheet: View {
                     prompt: Text(conditions.isEmpty ? "psd, ai" : "psd, ai (or leave empty for any type)")
                 )
                 Toggle("Enabled", isOn: $isEnabled)
+                Picker("Subfolders", selection: $subfolderPattern) {
+                    ForEach(SubfolderPattern.allCases, id: \.self) { pattern in
+                        Text(pattern.title).tag(pattern)
+                    }
+                }
                 if let errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(IntakeColor.danger)
@@ -353,7 +361,8 @@ struct RuleEditorSheet: View {
                     folderName: name,
                     extensions: tokens,
                     conditions: conditions,
-                    isEnabled: isEnabled
+                    isEnabled: isEnabled,
+                    subfolderPattern: subfolderPattern
                 )
                 dismiss()
             }

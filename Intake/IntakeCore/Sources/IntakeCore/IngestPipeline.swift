@@ -36,6 +36,7 @@ public struct IngestPipeline: Sendable {
     public func plan(
         for sourceURL: URL,
         existingNamesInDestination: Set<String> = [],
+        stableAt: Date? = nil,
         fileManager: FileManager = .default
     ) -> IngestPlan? {
         let sourceFolder = sourceURL.deletingLastPathComponent().standardizedFileURL
@@ -51,10 +52,36 @@ public struct IngestPipeline: Sendable {
         let match = DefaultTaxonomy.matchingRule(for: facts, rules: rules)
         let category = match?.category ?? .other
         let destinationFolderName = match?.folderName ?? FileCategory.other.folderName
-        let destinationDirectory = watchFolder.appendingPathComponent(
+
+        // Compute subfolder if pattern is set
+        let subfolder: String
+        let dateForSubfolder: Date
+        if let stableAtDate = stableAt {
+            dateForSubfolder = stableAtDate
+        } else {
+            // For Organize Existing without stableAt, try date added then creation date
+            if let dateAdded = FileFacts.dateAdded(for: sourceURL, fileManager: fileManager) {
+                dateForSubfolder = dateAdded
+            } else if let creationDate = FileFacts.creationDate(for: sourceURL, fileManager: fileManager) {
+                dateForSubfolder = creationDate
+            } else {
+                dateForSubfolder = Date()
+            }
+        }
+        subfolder = match?.subfolderPattern.subfolder(for: dateForSubfolder) ?? ""
+
+        // Build the destination directory with subfolder
+        var destinationDirectory = watchFolder.appendingPathComponent(
             destinationFolderName,
             isDirectory: true
         )
+        if !subfolder.isEmpty {
+            destinationDirectory = destinationDirectory.appendingPathComponent(
+                subfolder,
+                isDirectory: true
+            )
+        }
+
         let destinationURL = destinationDirectory.appendingPathComponent(
             renamed,
             isDirectory: false
@@ -131,9 +158,10 @@ public struct IngestPipeline: Sendable {
     }
 
     /// Move into the matching lazy category folder. Preserves the current name
-    /// except a collision suffix in the destination.
+    /// except a collision suffix in the destination. Includes date subfolders if configured.
     public func applyRoute(
         at sourceURL: URL,
+        stableAt: Date? = nil,
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws -> [ActivityEntry] {
@@ -160,10 +188,35 @@ public struct IngestPipeline: Sendable {
         let facts = FileFacts.onDisk(at: source, fileManager: fileManager)
         let match = DefaultTaxonomy.matchingRule(for: facts, rules: rules)
         let destinationFolderName = match?.folderName ?? FileCategory.other.folderName
-        let destinationDirectory = watchFolder.appendingPathComponent(
+
+        // Compute subfolder if pattern is set
+        let dateForSubfolder: Date
+        if let stableAtDate = stableAt {
+            dateForSubfolder = stableAtDate
+        } else {
+            // For Organize Existing without stableAt, try date added then creation date
+            if let dateAdded = FileFacts.dateAdded(for: source, fileManager: fileManager) {
+                dateForSubfolder = dateAdded
+            } else if let creationDate = FileFacts.creationDate(for: source, fileManager: fileManager) {
+                dateForSubfolder = creationDate
+            } else {
+                dateForSubfolder = Date()
+            }
+        }
+        let subfolder = match?.subfolderPattern.subfolder(for: dateForSubfolder) ?? ""
+
+        // Build destination with subfolder
+        var destinationDirectory = watchFolder.appendingPathComponent(
             destinationFolderName,
             isDirectory: true
         )
+        if !subfolder.isEmpty {
+            destinationDirectory = destinationDirectory.appendingPathComponent(
+                subfolder,
+                isDirectory: true
+            )
+        }
+
         try fileManager.createDirectory(
             at: destinationDirectory,
             withIntermediateDirectories: true
@@ -195,6 +248,7 @@ public struct IngestPipeline: Sendable {
 
     public func apply(
         _ plan: IngestPlan,
+        stableAt: Date? = nil,
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws -> [ActivityEntry] {
@@ -205,7 +259,7 @@ public struct IngestPipeline: Sendable {
         )
         var entries = renamed.entries
         entries.append(
-            contentsOf: try applyRoute(at: renamed.url, fileManager: fileManager, now: now)
+            contentsOf: try applyRoute(at: renamed.url, stableAt: stableAt, fileManager: fileManager, now: now)
         )
         return entries
     }

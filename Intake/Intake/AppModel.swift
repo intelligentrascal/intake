@@ -629,7 +629,8 @@ final class AppModel {
         folderName: String,
         extensions: Set<String>,
         conditions: [RuleCondition] = [],
-        isEnabled: Bool
+        isEnabled: Bool,
+        subfolderPattern: SubfolderPattern = .none
     ) {
         if let id {
             rules = RuleMutation.updating(
@@ -638,7 +639,8 @@ final class AppModel {
                 folderName: folderName,
                 extensions: extensions,
                 conditions: conditions,
-                isEnabled: isEnabled
+                isEnabled: isEnabled,
+                subfolderPattern: subfolderPattern
             )
         } else {
             rules = RuleMutation.addingCustom(
@@ -646,7 +648,8 @@ final class AppModel {
                 folderName: folderName,
                 extensions: extensions,
                 conditions: conditions,
-                isEnabled: isEnabled
+                isEnabled: isEnabled,
+                subfolderPattern: subfolderPattern
             )
         }
     }
@@ -863,7 +866,7 @@ final class AppModel {
                 deferred.append(item)
                 continue
             }
-            if !applyIngest(item.url) {
+            if !applyIngest(item.url, stableAt: item.stableAt) {
                 // Empty / still-writing — keep waiting with original stableAt.
                 deferred.append(item)
             }
@@ -931,7 +934,7 @@ final class AppModel {
 
     /// Returns `false` when the file should stay queued (missing, empty, or not routed yet).
     @discardableResult
-    private func applyIngest(_ url: URL) -> Bool {
+    private func applyIngest(_ url: URL, stableAt: Date? = nil) -> Bool {
         guard FileManager.default.fileExists(atPath: url.path) else { return true }
         if !DownloadWriteGate.allowsOrganizeOrRename(at: url) {
             return false
@@ -941,7 +944,7 @@ final class AppModel {
             rules: rules,
             ignorePolicy: ignorePolicy
         )
-        switch processor.processOne(url, mode: liveIngestPolicy.applyModeAfterWait) {
+        switch processor.processOne(url, mode: liveIngestPolicy.applyModeAfterWait, stableAt: stableAt) {
         case .organized(let entries):
             if entries.isEmpty {
                 // routeOnly refused (e.g. empty) — keep queued.

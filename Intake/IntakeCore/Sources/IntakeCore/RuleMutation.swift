@@ -27,7 +27,8 @@ public enum RuleMutation: Sendable {
         folderName: String,
         extensions: Set<String>,
         conditions: [RuleCondition] = [],
-        isEnabled: Bool
+        isEnabled: Bool,
+        subfolderPattern: SubfolderPattern = .none
     ) -> [RoutingRule] {
         rules.map { rule in
             guard rule.id == id else { return rule }
@@ -36,6 +37,7 @@ public enum RuleMutation: Sendable {
             copy.extensions = Set(extensions.map { $0.lowercased() })
             copy.conditions = conditions
             copy.isEnabled = isEnabled
+            copy.subfolderPattern = subfolderPattern
             return copy
         }
     }
@@ -45,10 +47,11 @@ public enum RuleMutation: Sendable {
         folderName: String,
         extensions: Set<String>,
         conditions: [RuleCondition] = [],
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        subfolderPattern: SubfolderPattern = .none
     ) -> [RoutingRule] {
         rules + [
-            .custom(folderName: folderName, extensions: extensions, conditions: conditions, isEnabled: isEnabled),
+            .custom(folderName: folderName, extensions: extensions, conditions: conditions, isEnabled: isEnabled, subfolderPattern: subfolderPattern),
         ]
     }
 
