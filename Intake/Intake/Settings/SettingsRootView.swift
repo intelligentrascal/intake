@@ -56,10 +56,12 @@ struct SettingsRootView: View {
 private struct SettingsSidebar: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @FocusState private var isFocused: Bool
+    private static let shortcutKeys = ["1", "2", "3", "4", "5", "6", "7"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(SettingsPane.allCases) { pane in
+            ForEach(Array(SettingsPane.allCases.enumerated()), id: \.element) { index, pane in
                 let isSelected = model.selectedSettingsPane == pane
                 Button {
                     model.selectedSettingsPane = pane
@@ -76,10 +78,17 @@ private struct SettingsSidebar: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
                 }
+                .overlay {
+                    if isSelected && isFocused {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Color.accentColor, lineWidth: 2)
+                    }
+                }
                 .foregroundStyle(.primary)
                 .accessibilityLabel(pane.title)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .accessibilityHint("Show \(pane.title) settings")
+                .help(shortcutHelp(for: pane, index: index))
             }
             Spacer(minLength: 0)
         }
@@ -95,6 +104,7 @@ private struct SettingsSidebar: View {
         }
         .focusable()
         .focusEffectDisabled()
+        .focused($isFocused)
         .onKeyPress(.upArrow) { step(-1) }
         .onKeyPress(.downArrow) { step(1) }
         .accessibilityElement(children: .contain)
@@ -108,6 +118,11 @@ private struct SettingsSidebar: View {
         guard panes.indices.contains(next) else { return .handled }
         model.selectedSettingsPane = panes[next]
         return .handled
+    }
+
+    private func shortcutHelp(for pane: SettingsPane, index: Int) -> String {
+        guard Self.shortcutKeys.indices.contains(index) else { return pane.title }
+        return "\(pane.title) \u{2318}\(Self.shortcutKeys[index])"
     }
 }
 
