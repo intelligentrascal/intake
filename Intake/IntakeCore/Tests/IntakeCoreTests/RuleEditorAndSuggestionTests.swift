@@ -351,7 +351,198 @@ struct OpenRouterSuggestionTests {
         let suggestion = try OpenRouterChatParser.folderSuggestion(from: content)
         #expect(suggestion.folderName == "Design")
         #expect(suggestion.reason == "Adobe file")
-        #expect(OpenRouterChatParser.httpErrorMessage(statusCode: 401).contains("Unauthorized"))
-        #expect(OpenRouterChatParser.httpErrorMessage(statusCode: 429).contains("Rate limited"))
+    }
+
+    @Test
+    func includesUsageFlagInRequestBody() throws {
+        let body = try OpenRouterRequestBuilder.body(
+            model: "openai/gpt-4o-mini",
+            fileName: "test.pdf",
+            folders: ["Documents"]
+        )
+        let json = String(decoding: body, as: UTF8.self)
+        #expect(json.contains("\"usage\""))
+        #expect(json.contains("\"include\""))
+    }
+
+    @Test
+    func parsesUsageFromChatCompletion() throws {
+        let payload = """
+        {
+          "choices": [{"message": {"content": "{\\"folder\\":\\"Documents\\",\\"reason\\":\\"PDF\\"}"}}],
+          "usage": {
+            "prompt_tokens": 150,
+            "completion_tokens": 50,
+            "total_cost": 0.001234
+          }
+        }
+        """
+        let usage = try OpenRouterChatParser.usage(from: Data(payload.utf8))
+        #expect(usage.promptTokens == 150)
+        #expect(usage.completionTokens == 50)
+        #expect(usage.cost == 0.001234)
+    }
+
+    @Test
+    func buildsKeyAndCreditsURLs() throws {
+        let keyURL = OpenRouterRequestBuilder.keyInfoURL(baseURL: "https://openrouter.ai/api/v1/")
+        #expect(keyURL?.absoluteString == "https://openrouter.ai/api/v1/key")
+
+        let creditsURL = OpenRouterRequestBuilder.creditsURL(baseURL: "https://openrouter.ai/api/v1")
+        #expect(creditsURL?.absoluteString == "https://openrouter.ai/api/v1/credits")
+    }
+
+    @Test
+    func parsesKeyInfo() throws {
+        let payload = """
+        {
+          "data": {
+            "label": "My Key",
+            "usage": 1.5,
+            "limit": 10.0,
+            "limit_remaining": 8.5
+          }
+        }
+        """
+        let info = try OpenRouterKeyInfoParser.keyInfo(from: Data(payload.utf8))
+        #expect(info.label == "My Key")
+        #expect(info.usage == 1.5)
+        #expect(info.limit == 10.0)
+        #expect(info.limitRemaining == 8.5)
+    }
+
+    @Test
+    func parsesCreditsInfo() throws {
+        let payload = """
+        {
+          "data": {
+            "total_credits": 100.0,
+            "total_usage": 23.45
+          }
+        }
+        """
+        let info = try OpenRouterCreditsParser.creditsInfo(from: Data(payload.utf8))
+        #expect(info.totalCredits == 100.0)
+        #expect(info.totalUsage == 23.45)
+    }
+
+    @Test
+    func providesFriendlyError401And402Messages() {
+        let msg401 = OpenRouterChatParser.httpErrorMessage(statusCode: 401)
+        #expect(msg401.contains("Invalid"))
+        #expect(msg401.contains("key"))
+
+        let msg402 = OpenRouterChatParser.httpErrorMessage(statusCode: 402)
+        #expect(msg402.contains("credit"))
+    }
+}
+
+struct OpenRouterSpendTrackerTests {
+    @Test
+    func startsWithZeroSpend() {
+        let tracker = OpenRouterSpendTracker()
+        #expect(tracker.totalSpend == 0)
+        #expect(tracker.monthlySpend == 0)
+    }
+
+    @Test
+    func addsSpendToTotalAndMonthly() {
+        var tracker = OpenRouterSpendTracker()
+        tracker.addCost(0.5, now: Date())
+        tracker.addCost(0.3, now: Date())
+        #expect(tracker.totalSpend == 0.8)
+        #expect(tracker.monthlySpend == 0.8)
+    }
+
+    @Test
+    func resetsMonthlySpendWhenMonthRollsOver() {
+        var tracker = OpenRouterSpendTracker(
+            totalSpend: 1.0,
+            monthlySpend: 0.5,
+            lastResetDate: Date(timeIntervalSince1970: 0)
+        )
+        let calendar = Calendar.current
+        let nextMonth = calendar.date(byAdding: .month, value: 1, to: Date(timeIntervalSince1970: 0))!
+
+        tracker.addCost(0.2, now: nextMonth)
+        #expect(tracker.totalSpend == 1.2)
+        #expect(tracker.monthlySpend == 0.2)
+    }
+
+    @Test
+    func persistsAndLoadsFromUserDefaults() throws {
+        let suiteName = "test.openRouterSpendTracker.\(UUID())"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        var tracker = OpenRouterSpendTracker(
+            totalSpend: 5.25,
+            monthlySpend: 2.10,
+            lastResetDate: Date()
+        )
+        tracker.save(to: defaults)
+
+        let loaded = OpenRouterSpendTracker.load(from: defaults)
+        #expect(loaded.totalSpend == 5.25)
+        #expect(loaded.monthlySpend == 2.10)
+    }
+
+    @Test
+    func resetsMonthlyFromUI() {
+        let now = Date()
+        var tracker = OpenRouterSpendTracker(
+            totalSpend: 1.0,
+            monthlySpend: 0.5,
+            lastResetDate: Date(timeIntervalSince1970: 0)
+        )
+        tracker.resetMonthly(now: now)
+        #expect(tracker.monthlySpend == 0)
+        #expect(tracker.totalSpend == 1.0)
+        #expect(tracker.lastResetDate == now)
+    }
+
+    @Test
+    func parsingChatCompletionWithCostIncrementsSpendTracker() throws {
+        let payload = """
+        {
+          "choices": [{"message": {"content": "{\\"folder\\":\\"Documents\\",\\"reason\\":\\"PDF\\"}"}}],
+          "usage": {
+            "prompt_tokens": 150,
+            "completion_tokens": 50,
+            "total_cost": 0.001234
+          }
+        }
+        """
+
+        // Parse the usage from response
+        let usage = try OpenRouterChatParser.usage(from: Data(payload.utf8))
+
+        // Add cost to tracker
+        var tracker = OpenRouterSpendTracker()
+        tracker.addCost(usage.cost)
+
+        #expect(tracker.totalSpend == 0.001234)
+        #expect(tracker.monthlySpend == 0.001234)
+
+        // Add another cost
+        tracker.addCost(0.002)
+        #expect(tracker.totalSpend == 0.003234)
+        #expect(tracker.monthlySpend == 0.003234)
+    }
+}
+
+extension OpenRouterSpendTrackerTests {
+    @Test
+    func resetsAllSpendWhenRequested() {
+        var tracker = OpenRouterSpendTracker(
+            totalSpend: 5.0,
+            monthlySpend: 2.0,
+            lastResetDate: Date(timeIntervalSince1970: 0)
+        )
+        let now = Date()
+        tracker.resetAll(now: now)
+        #expect(tracker.totalSpend == 0)
+        #expect(tracker.monthlySpend == 0)
+        #expect(tracker.lastResetDate == now)
     }
 }

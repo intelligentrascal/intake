@@ -6,6 +6,13 @@ struct AISettingsView: View {
     @State private var apiKeyDraft = ""
     @State private var keyIsSaved = false
     @State private var otherProviders: [OtherAIProviderPresence] = OtherAIProviderDetector.scan()
+    @State private var keyInfo: OpenRouterKeyInfo?
+    @State private var creditsInfo: OpenRouterCreditsInfo?
+    @State private var lastLookupTime: Date?
+    @State private var isLoading = false
+    @State private var showResetConfirmation = false
+
+    private let lookupDebounceInterval: TimeInterval = 60
 
     var body: some View {
         @Bindable var model = model
@@ -34,6 +41,8 @@ struct AISettingsView: View {
                             OpenRouterKeychain.delete()
                             apiKeyDraft = ""
                             keyIsSaved = false
+                            keyInfo = nil
+                            creditsInfo = nil
                         }
                     }
                 }
@@ -47,6 +56,39 @@ struct AISettingsView: View {
                     }
                 }
                 TextField("Custom model", text: $model.openRouterModel)
+                if isLoading {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Fetching account info...")
+                            .foregroundStyle(.secondary)
+                    }
+                } else if let keyInfo {
+                    LabeledContent("API Key", value: keyInfo.label)
+                    LabeledContent("Key Usage", value: String(format: "$%.4f", keyInfo.usage))
+                    LabeledContent("Remaining Limit", value: String(format: "$%.2f", keyInfo.limitRemaining))
+                }
+                if let creditsInfo {
+                    LabeledContent("Account Credits", value: String(format: "$%.2f", creditsInfo.totalCredits))
+                }
+                if model.openRouterSpendTracker.totalSpend > 0 {
+                    Divider()
+                    LabeledContent("Total Intake Spend", value: String(format: "$%.4f", model.openRouterSpendTracker.totalSpend))
+                    LabeledContent("This Month", value: String(format: "$%.4f", model.openRouterSpendTracker.monthlySpend))
+                    Button("Reset Spend", role: .destructive) {
+                        showResetConfirmation = true
+                    }
+                    .alert("Reset Intake Spending?", isPresented: $showResetConfirmation) {
+                        Button("Cancel", role: .cancel) { }
+                        Button("Reset", role: .destructive) {
+                            var tracker = model.openRouterSpendTracker
+                            tracker.resetAll()
+                            model.openRouterSpendTracker = tracker
+                        }
+                    } message: {
+                        Text("This will reset both total and monthly spending to zero.")
+                    }
+                }
                 if let status = model.openRouterStatusMessage {
                     Text(status)
                         .foregroundStyle(IntakeColor.warning)
@@ -84,6 +126,7 @@ struct AISettingsView: View {
         .onAppear {
             keyIsSaved = OpenRouterKeychain.hasKey
             otherProviders = OtherAIProviderDetector.scan()
+            lookupAccountInfo()
         }
     }
 
@@ -94,5 +137,50 @@ struct AISettingsView: View {
         apiKeyDraft = ""
         keyIsSaved = OpenRouterKeychain.hasKey
         model.openRouterStatusMessage = nil
+        keyInfo = nil
+        creditsInfo = nil
+        lastLookupTime = nil
+        lookupAccountInfo()
+    }
+
+    private func lookupAccountInfo() {
+        guard model.aiSuggestionsEnabled, model.openRouterEnabled else { return }
+        guard let key = OpenRouterKeychain.load() else { return }
+
+        // Debounce lookups to at most once per minute
+        if let lastTime = lastLookupTime, Date().timeIntervalSince(lastTime) < lookupDebounceInterval {
+            return
+        }
+
+        isLoading = true
+        Task {
+            let keyResult = await OpenRouterClient.fetchKeyInfo(
+                apiKey: key,
+                baseURL: model.openRouterBaseURL
+            )
+            let creditsResult = await OpenRouterClient.fetchCreditsInfo(
+                apiKey: key,
+                baseURL: model.openRouterBaseURL
+            )
+
+            await MainActor.run {
+                isLoading = false
+                lastLookupTime = Date()
+
+                if case .success(let info) = keyResult {
+                    keyInfo = info
+                } else if case .failure(let error) = keyResult {
+                    model.openRouterStatusMessage = error.userMessage
+                }
+
+                if case .success(let info) = creditsResult {
+                    creditsInfo = info
+                } else if case .failure(let error) = creditsResult {
+                    if model.openRouterStatusMessage == nil {
+                        model.openRouterStatusMessage = error.userMessage
+                    }
+                }
+            }
+        }
     }
 }

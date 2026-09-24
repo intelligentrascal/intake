@@ -63,6 +63,9 @@ final class AppModel {
     }
     var openRouterStatusMessage: String?
     var openRouterRequestCount = 0
+    var openRouterSpendTracker: OpenRouterSpendTracker {
+        didSet { openRouterSpendTracker.save(to: .standard) }
+    }
 
     var activity: [ActivityEntry] {
         didSet { persistActivity() }
@@ -201,6 +204,7 @@ final class AppModel {
         suggestionMemory = Self.loadSuggestionMemory()
         activity = Self.loadActivity()
         undoService = UndoService.load(from: .standard)
+        openRouterSpendTracker = OpenRouterSpendTracker.load(from: .standard)
         snoozedUntil = Self.loadSnooze()
         cleanupCandidates = []
         launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
@@ -984,18 +988,21 @@ final class AppModel {
                 configuration: configuration
             )
             switch result {
-            case .success(let suggestion):
+            case .success(let suggestionWithCost):
                 self.openRouterStatusMessage = nil
                 self.pendingAISuggestions.insert(
                     PendingAISuggestion(
                         fileName: fileName,
                         url: destination,
                         fileExtension: ext,
-                        proposedFolder: suggestion.folderName,
-                        reason: suggestion.reason
+                        proposedFolder: suggestionWithCost.suggestion.folderName,
+                        reason: suggestionWithCost.suggestion.reason
                     ),
                     at: 0
                 )
+                if let cost = suggestionWithCost.cost, cost > 0 {
+                    self.openRouterSpendTracker.addCost(cost)
+                }
             case .failure(let failure):
                 self.openRouterStatusMessage = failure.userMessage
             }

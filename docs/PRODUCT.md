@@ -88,7 +88,13 @@ Chronological **audit trail** of rename / move / skip / error (plus cleanup dele
 4. After moves/deletes, remove empty Intake-created category folders.
 
 ### AI
-Optional **OpenRouter** provider: Keychain API key, base URL, model. Master AI suggestions toggle and OpenRouter stay **off by default**. Network runs only when both are on, and only on rule miss / Other — filename and extension, not file contents. Ollama, Claude CLI, Cursor agent CLI (`agent` and/or `cursor` on PATH), and Codex CLI rows show **Available** vs **Not installed** from a PATH check; they are not called for suggestions yet.
+Optional **OpenRouter** provider: Keychain API key, base URL, model. Master AI suggestions toggle and OpenRouter stay **off by default**. Network runs only when both are on, and only on rule miss / Other — filename and extension, not file contents.
+
+**OpenRouter cost tracking**: When AI suggestions and OpenRouter are both enabled, Intake fetches and displays your API key usage, account limits, and remaining credits on the OpenRouter pane. Intake also tracks its own spending: total spend across all time and spend in the current calendar month, with a reset button. Each suggestion's cost is recorded. Cost lookups run at most once per minute (after key entry or when the AI settings pane opens) and only to the configured base URL.
+
+**Error messages**: 401 (invalid key) and 402 (out of credit) get friendly messages in Settings.
+
+Ollama, Claude CLI, Cursor agent CLI (`agent` and/or `cursor` on PATH), and Codex CLI rows show **Available** vs **Not installed** from a PATH check; they are not called for suggestions yet.
 
 ## Chrome
 
