@@ -138,15 +138,17 @@ struct CleanupScannerTests {
     }
 
     @Test
-    func ignoresIncompleteDownloadsInTheQueue() throws {
+    func activeIncompleteDownloadsAreNeverFlagged() throws {
         let fileManager = FileManager.default
         let root = try makeTempWatchFolder()
         defer { try? fileManager.removeItem(at: root) }
         let partial = root.appendingPathComponent("movie.mp4.crdownload")
         try Data("partial".utf8).write(to: partial)
         let now = Date()
+        // Still receiving bytes a minute ago — nowhere near the 24h abandoned
+        // threshold, and never counted as stale either.
         try fileManager.setAttributes(
-            [.modificationDate: now.addingTimeInterval(-90 * 24 * 3600)],
+            [.modificationDate: now.addingTimeInterval(-60)],
             ofItemAtPath: partial.path
         )
         let found = CleanupScanner(
@@ -155,6 +157,145 @@ struct CleanupScannerTests {
             includeWatchRoot: true
         ).candidates(now: now, fileManager: fileManager)
         #expect(found.isEmpty)
+    }
+
+    @Test
+    func abandonedDownloadUnchangedFor24HoursIsFlagged() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let partial = root.appendingPathComponent("movie.mp4.crdownload")
+        try Data("partial".utf8).write(to: partial)
+        let now = Date()
+        try fileManager.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-25 * 3600)],
+            ofItemAtPath: partial.path
+        )
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 30,
+            includeWatchRoot: true
+        ).candidates(now: now, fileManager: fileManager)
+        #expect(found.map(\.url.lastPathComponent) == ["movie.mp4.crdownload"])
+        #expect(found.first?.reason == .abandonedDownload)
+    }
+
+    @Test
+    func abandonedDownloadBypassesTheStaleThreshold() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let partial = root.appendingPathComponent("movie.mp4.part")
+        try Data("partial".utf8).write(to: partial)
+        let now = Date()
+        try fileManager.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-25 * 3600)],
+            ofItemAtPath: partial.path
+        )
+        // A threshold measured in months — the abandoned download still
+        // shows up because non-stale reasons skip the stale-days threshold.
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: true
+        ).candidates(now: now, fileManager: fileManager)
+        #expect(found.map(\.reason) == [.abandonedDownload])
+    }
+
+    @Test
+    func duplicateContentIsFlaggedWithTheOldestAsOriginal() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+
+        let documents = root.appendingPathComponent("Documents", isDirectory: true)
+        try fileManager.createDirectory(at: documents, withIntermediateDirectories: true)
+        let original = documents.appendingPathComponent("Report.pdf")
+        let copy = documents.appendingPathComponent("Report (1).pdf")
+        try Data("same bytes".utf8).write(to: original)
+        try Data("same bytes".utf8).write(to: copy)
+
+        let now = Date()
+        try fileManager.setAttributes(
+            [.creationDate: now.addingTimeInterval(-10 * 24 * 3600)],
+            ofItemAtPath: original.path
+        )
+        try fileManager.setAttributes(
+            [.creationDate: now.addingTimeInterval(-1 * 24 * 3600)],
+            ofItemAtPath: copy.path
+        )
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: false
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.map(\.url.lastPathComponent) == ["Report (1).pdf"])
+        #expect(found.first?.reason.duplicateOf?.lastPathComponent == original.lastPathComponent)
+    }
+
+    @Test
+    func sameSizeDifferentContentIsNotFlaggedAsDuplicate() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+
+        let documents = root.appendingPathComponent("Documents", isDirectory: true)
+        try fileManager.createDirectory(at: documents, withIntermediateDirectories: true)
+        let first = documents.appendingPathComponent("A.bin")
+        let second = documents.appendingPathComponent("B.bin")
+        try Data("aaaaa".utf8).write(to: first)
+        try Data("bbbbb".utf8).write(to: second)
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: false
+        ).candidates(now: Date(), fileManager: fileManager)
+
+        #expect(found.isEmpty)
+    }
+
+    @Test
+    func duplicateBypassesTheStaleThresholdAndSnoozeStillApplies() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+
+        let documents = root.appendingPathComponent("Documents", isDirectory: true)
+        try fileManager.createDirectory(at: documents, withIntermediateDirectories: true)
+        let original = documents.appendingPathComponent("Report.pdf")
+        let copy = documents.appendingPathComponent("Report (1).pdf")
+        try Data("same bytes".utf8).write(to: original)
+        try Data("same bytes".utf8).write(to: copy)
+
+        let now = Date()
+        try fileManager.setAttributes(
+            [.creationDate: now.addingTimeInterval(-10 * 24 * 3600)],
+            ofItemAtPath: original.path
+        )
+        try fileManager.setAttributes(
+            [.creationDate: now.addingTimeInterval(-1 * 24 * 3600)],
+            ofItemAtPath: copy.path
+        )
+
+        // Both files are brand new — well under a 365 day stale threshold —
+        // yet the duplicate still surfaces.
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: false
+        ).candidates(now: now, fileManager: fileManager)
+        #expect(found.map(\.url.lastPathComponent) == ["Report (1).pdf"])
+
+        let snoozed = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: false,
+            snoozedUntil: [CleanupScanner.snoozeKey(for: copy): now.addingTimeInterval(30 * 24 * 3600)]
+        ).candidates(now: now, fileManager: fileManager)
+        #expect(snoozed.isEmpty)
     }
 
     private func makeTempWatchFolder() throws -> URL {

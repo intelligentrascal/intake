@@ -61,8 +61,14 @@ Chronological **audit trail** of rename / move / skip / error (plus cleanup dele
 
 ### Cleanup
 1. Scan Intake-managed paths (and optionally loose files still in watch root).
-2. Files not opened/modified for *N* days appear in Cleanup — a **decision queue**, never merged with Activity.
-3. Actions: **File Away** (pick folder), **Delete** (confirm; Intake moves it to Trash), **Keep** (snooze / exclude).
+2. Files not opened/modified for *N* days appear in Cleanup — a **decision queue**, never merged with Activity. Each row shows why it's there:
+   - **Stale** — unopened/unmodified for the threshold, same as before.
+   - **Duplicate** — same size, then a matching content hash, as another file in the watch root or an Intake-managed folder. The oldest file (by date added, then shortest name) is kept as the original; the row names it. Hashes are cached by path, size and modification date so unchanged files are never re-hashed.
+   - **Abandoned download** — an incomplete-download extension (`.crdownload`, `.part`, etc.) whose size and modification date haven't changed for 24 hours. An actively-downloading file is never flagged.
+   - **Installer** — reserved for installer cleanup (a later release); the case exists but nothing produces it yet.
+   
+   Duplicate and abandoned-download rows skip the stale-days threshold — they show up regardless of age.
+3. Actions: **File Away** (pick folder), **Delete** (confirm; Intake moves it to Trash), **Keep** (snooze / exclude) — same for every reason. Nothing is ever deleted without the user confirming.
 4. After moves/deletes, remove empty Intake-created category folders.
 
 ### AI

@@ -69,6 +69,8 @@ final class AppModel {
     }
 
     var cleanupCandidates: [CleanupCandidate]
+    /// Kept across scans so an unchanged file's duplicate hash isn't recomputed.
+    private let cleanupHashCache = DuplicateHashCache()
     var cleanupThresholdDays: Int {
         didSet {
             UserDefaults.standard.set(cleanupThresholdDays, forKey: SettingsKey.cleanupDays)
@@ -983,7 +985,8 @@ final class AppModel {
             includeWatchRoot: includeWatchRootInCleanup,
             snoozedUntil: snoozedUntil,
             ignorePolicy: ignorePolicy,
-            managedFolderNames: managedFolderNames
+            managedFolderNames: managedFolderNames,
+            hashCache: cleanupHashCache
         ).candidates()
     }
 
@@ -1011,7 +1014,7 @@ final class AppModel {
 
     func keep(_ candidate: CleanupCandidate) {
         var next = snoozedUntil
-        next[candidate.url.path] = CleanupScanner(
+        next[CleanupScanner.snoozeKey(for: candidate.url)] = CleanupScanner(
             watchFolder: watchFolder,
             thresholdDays: cleanupThresholdDays,
             includeWatchRoot: includeWatchRootInCleanup,
