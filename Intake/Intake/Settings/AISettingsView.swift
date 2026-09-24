@@ -1,5 +1,7 @@
+import AppKit
 import SwiftUI
 import IntakeCore
+import UniformTypeIdentifiers
 
 struct AISettingsView: View {
     @Environment(AppModel.self) private var model
@@ -11,16 +13,19 @@ struct AISettingsView: View {
     @State private var lastLookupTime: Date?
     @State private var isLoading = false
     @State private var showResetConfirmation = false
+    @State private var trialResult: String?
+    @State private var isTrying = false
 
     private let lookupDebounceInterval: TimeInterval = 60
 
     var body: some View {
         @Bindable var model = model
         Form {
+            contentAwareSection
             Section {
                 Toggle("Suggest names and folders with AI", isOn: $model.aiSuggestionsEnabled)
             } footer: {
-                Text("Off by default. Core organizing uses extension rules only. Intake never sends file contents unless you turn this on and enable a provider.")
+                Text("Off by default. Core organizing uses extension rules only. Suggestions send a file’s name and extension to your provider — never its contents.")
             }
             Section {
                 Toggle("Enable OpenRouter", isOn: $model.openRouterEnabled)
@@ -124,9 +129,81 @@ struct AISettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear {
+            model.contentAwareAvailability = .current
             keyIsSaved = OpenRouterKeychain.hasKey
             otherProviders = OtherAIProviderDetector.scan()
             lookupAccountInfo()
+        }
+    }
+
+    // MARK: Content-aware rename (on-device)
+
+    @ViewBuilder
+    private var contentAwareSection: some View {
+        @Bindable var model = model
+        Section {
+            Toggle("Rename files from their contents", isOn: $model.contentAwareRename.isEnabled)
+            if let message = model.contentAwareAvailability.message {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(IntakeColor.warning)
+                    .font(.callout)
+            }
+            ForEach(ContentAwareFileType.allCases) { type in
+                Toggle(type.title, isOn: fileTypeBinding(type))
+                    .disabled(!model.contentAwareRename.isEnabled)
+            }
+            TextField("Name template", text: $model.contentAwareRename.template, prompt: Text(ContentNameTemplate.defaultTemplate))
+                .disabled(!model.contentAwareRename.isEnabled)
+            Text("Tokens: {date} {type} {organization} {subject} {original}. Empty tokens are dropped.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("Try on a File…", action: tryOnFile)
+                    .disabled(isTrying)
+                if isTrying {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            if let trialResult {
+                Text(trialResult)
+                    .font(.callout)
+                    .textSelection(.enabled)
+            }
+        } header: {
+            Text("Content-aware rename")
+        } footer: {
+            Text("Off by default. Intake reads the text of PDFs and images with Apple’s on-device model — file contents never leave this Mac. A name like “2026-09-14 Invoice Acme” is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity.")
+        }
+    }
+
+    private func fileTypeBinding(_ type: ContentAwareFileType) -> Binding<Bool> {
+        Binding {
+            model.contentAwareRename.fileTypes.contains(type)
+        } set: { isOn in
+            if isOn {
+                model.contentAwareRename.fileTypes.insert(type)
+            } else {
+                model.contentAwareRename.fileTypes.remove(type)
+            }
+        }
+    }
+
+    private func tryOnFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.pdf, .image]
+        panel.prompt = "Try"
+        panel.message = "Intake reads this file on your Mac and shows the name it would use. Nothing is renamed."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        isTrying = true
+        trialResult = nil
+        Task {
+            let result = await model.tryContentAwareName(for: url)
+            trialResult = result
+            isTrying = false
         }
     }
 

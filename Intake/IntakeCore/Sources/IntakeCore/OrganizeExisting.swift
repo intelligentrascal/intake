@@ -245,7 +245,12 @@ public struct OrganizeExistingProcessor: Sendable {
                 result = .skipped(skipEntry(for: source, reason: .changedSincePreview, now: now))
             } else if let freshPlan = pipeline.plan(for: source, fileManager: fileManager) {
                 do {
-                    let produced = try pipeline.apply(freshPlan, fileManager: fileManager, now: now)
+                    let produced = try pipeline.apply(
+                        freshPlan,
+                        contentAwareFileName: item.contentAwareFileName,
+                        fileManager: fileManager,
+                        now: now
+                    )
                     result = .organized(produced)
                 } catch {
                     result = .error(

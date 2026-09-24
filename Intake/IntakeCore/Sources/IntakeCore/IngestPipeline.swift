@@ -37,6 +37,7 @@ public struct IngestPipeline: Sendable {
         for sourceURL: URL,
         existingNamesInDestination: Set<String> = [],
         stableAt: Date? = nil,
+        proposedFileName: String? = nil,
         fileManager: FileManager = .default
     ) -> IngestPlan? {
         let sourceFolder = sourceURL.deletingLastPathComponent().standardizedFileURL
@@ -44,11 +45,21 @@ public struct IngestPipeline: Sendable {
             return nil
         }
 
+        // A content-aware name (when given) replaces the Title Case proposal,
+        // and rules match against it — the same name live filing would see.
+        let proposed = proposedFileName ?? normalizer.proposedFileName(for: sourceURL)
         let renamed = Self.uniqued(
-            fileName: normalizer.proposedFileName(for: sourceURL),
+            fileName: proposed,
             among: existingNamesInDestination
         )
-        let facts = FileFacts.onDisk(at: sourceURL, fileManager: fileManager)
+        var facts = FileFacts.onDisk(at: sourceURL, fileManager: fileManager)
+        if let proposedFileName {
+            facts = FileFacts(
+                fileURL: URL(fileURLWithPath: proposedFileName),
+                size: facts.size,
+                sourceURLs: facts.sourceURLs
+            )
+        }
         let match = DefaultTaxonomy.matchingRule(for: facts, rules: rules)
         let category = match?.category ?? .other
         let destinationFolderName = match?.folderName ?? FileCategory.other.folderName
@@ -151,7 +162,8 @@ public struct IngestPipeline: Sendable {
                     url: destination,
                     fileName: uniqueName,
                     beforePath: source.path,
-                    afterPath: destination.path
+                    afterPath: destination.path,
+                    renameSource: .titleCase
                 ),
             ]
         )
@@ -246,9 +258,13 @@ public struct IngestPipeline: Sendable {
         ]
     }
 
+    /// Title Case rename → optional content-aware rename → route. With a
+    /// content-aware name the file gets two `renamed` rows (undo steps back
+    /// through both) and rules see the richer name.
     public func apply(
         _ plan: IngestPlan,
         stableAt: Date? = nil,
+        contentAwareFileName: String? = nil,
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws -> [ActivityEntry] {
@@ -258,8 +274,19 @@ public struct IngestPipeline: Sendable {
             now: now
         )
         var entries = renamed.entries
+        var current = renamed.url
+        if let contentAwareFileName {
+            let content = try applyContentRename(
+                at: current,
+                to: contentAwareFileName,
+                fileManager: fileManager,
+                now: now
+            )
+            entries.append(contentsOf: content.entries)
+            current = content.url
+        }
         entries.append(
-            contentsOf: try applyRoute(at: renamed.url, stableAt: stableAt, fileManager: fileManager, now: now)
+            contentsOf: try applyRoute(at: current, stableAt: stableAt, fileManager: fileManager, now: now)
         )
         return entries
     }
@@ -287,7 +314,7 @@ public struct IngestPipeline: Sendable {
         }
     }
 
-    private func existingNames(in directory: URL, fileManager: FileManager) -> Set<String> {
+    func existingNames(in directory: URL, fileManager: FileManager) -> Set<String> {
         guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else {
             return []
         }

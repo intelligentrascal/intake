@@ -6,12 +6,16 @@ public struct OrganizePreviewItem: Identifiable, Equatable, Sendable {
     public var plan: IngestPlan
     /// Size at scan time — Apply re-checks this before touching the file.
     public var sizeAtPreview: Int64
+    /// The on-device content-aware name shown in the preview (and applied),
+    /// when content-aware rename is on and produced one for this file.
+    public var contentAwareFileName: String?
 
     public var id: URL { plan.sourceURL }
 
-    public init(plan: IngestPlan, sizeAtPreview: Int64) {
+    public init(plan: IngestPlan, sizeAtPreview: Int64, contentAwareFileName: String? = nil) {
         self.plan = plan
         self.sizeAtPreview = sizeAtPreview
+        self.contentAwareFileName = contentAwareFileName
     }
 }
 
@@ -64,10 +68,13 @@ public struct OrganizeExistingPreview: Equatable, Sendable {
 /// destination listing that starts from disk and grows as each simulated
 /// file lands — so two files that would collide with each other, not just
 /// with something already on disk, get distinct suffixes in the preview.
+/// `contentAwareNames` (source URL → validated content-aware name) replaces
+/// the Title Case name for those files, and rules match against it.
 public enum OrganizeExistingPreviewBuilder: Sendable {
     public static func build(
         scan: OrganizeExistingScan,
         pipeline: IngestPipeline,
+        contentAwareNames: [URL: String] = [:],
         fileManager: FileManager = .default
     ) -> OrganizeExistingPreview {
         // Case-insensitive, like APFS: seed each destination's simulated
@@ -92,9 +99,11 @@ public enum OrganizeExistingPreviewBuilder: Sendable {
         }
 
         for url in scan.eligible {
+            let contentName = contentAwareNames[url.standardizedFileURL] ?? contentAwareNames[url]
             guard let plan = pipeline.plan(
                 for: url,
                 existingNamesInDestination: [],
+                proposedFileName: contentName,
                 fileManager: fileManager
             ) else {
                 continue
@@ -111,7 +120,11 @@ public enum OrganizeExistingPreviewBuilder: Sendable {
             finalPlan.isNewFolder = newFolders.contains(destination)
 
             let size = DownloadWriteGate.fileSize(at: url, fileManager: fileManager)
-            let item = OrganizePreviewItem(plan: finalPlan, sizeAtPreview: size)
+            let item = OrganizePreviewItem(
+                plan: finalPlan,
+                sizeAtPreview: size,
+                contentAwareFileName: contentName
+            )
 
             if itemsByFolder[destination] == nil {
                 order.append(destination)

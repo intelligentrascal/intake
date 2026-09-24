@@ -24,6 +24,9 @@ final class WatchFolderController {
     @ObservationIgnored private var ageGateTask: Task<Void, Never>?
     @ObservationIgnored private var ageGateHeartbeatTask: Task<Void, Never>?
     @ObservationIgnored private var arrivedDuringOrganize: [URL] = []
+    /// Background content-aware jobs; filing holds a file up to 30 s for one.
+    @ObservationIgnored private var contentTracker = ContentRenameTracker()
+    @ObservationIgnored private var contentTasks: [UUID: Task<Void, Never>] = [:]
 
     init(profile: WatchFolderProfile, model: AppModel) {
         profileID = profile.id
@@ -80,6 +83,7 @@ final class WatchFolderController {
     func stop() {
         watcher.stop()
         cancelAgeGate()
+        cancelContentRenames()
         if accessing {
             folder.stopAccessingSecurityScopedResource()
             accessing = false
@@ -173,6 +177,7 @@ final class WatchFolderController {
         guard FileManager.default.fileExists(atPath: reportedURL.path) else { return }
         let url = FileIdentity.onDiskURL(for: reportedURL)
         let current = applyRenameOnStableIfNeeded(url)
+        startContentRenameIfNeeded(current)
         rememberStable(current, stableAt: stableAt)
         if !profile.isOrganizing {
             arrivedWhilePaused.removeAll { $0.standardizedFileURL == current.standardizedFileURL }
@@ -200,6 +205,71 @@ final class WatchFolderController {
         case .notInWatchRoot:
             return url
         }
+    }
+
+    // MARK: Content-aware rename
+
+    /// After the immediate Title Case rename, read the file on this Mac and
+    /// look for a richer name in the background. Follows this folder's
+    /// Rename when download finishes setting.
+    private func startContentRenameIfNeeded(_ url: URL) {
+        guard profile.renameWhenDownloadFinishes,
+              let renamer = model.contentAwareRenamer(),
+              renamer.isEligible(url)
+        else { return }
+        let id = contentTracker.begin(for: url, at: Date())
+        contentTasks[id] = Task { @MainActor [weak self] in
+            let proposal = await renamer.proposal(for: url)
+            guard !Task.isCancelled else { return }
+            self?.finishContentRename(id: id, proposal: proposal)
+        }
+    }
+
+    private func finishContentRename(id: UUID, proposal: ContentNameProposal) {
+        contentTasks[id] = nil
+        guard let current = contentTracker.finish(id) else { return }
+        defer {
+            // Release a file that filing was holding for this name.
+            if profile.isOrganizing { reevaluateWaitingForAge() }
+        }
+        // Any rejection keeps the Title Case name: nothing to do.
+        guard let name = proposal.fileName,
+              FileManager.default.fileExists(atPath: current.path)
+        else { return }
+        do {
+            let result = try pipeline.applyContentRename(at: current, to: name)
+            guard !result.entries.isEmpty else { return }
+            model.recordOrganized(result.entries, watchFolderID: profileID)
+            let old = current.standardizedFileURL
+            let new = result.url.standardizedFileURL
+            if new.deletingLastPathComponent() == folder.standardizedFileURL {
+                watcher.acknowledgeRootFile(named: new.lastPathComponent)
+                watcher.acknowledgeRootFile(named: old.lastPathComponent)
+            }
+            if let index = waitingForAge.firstIndex(where: { $0.url == old }) {
+                waitingForAge[index].url = new
+                persistWaitingForAge()
+            }
+            if let index = arrivedWhilePaused.firstIndex(where: { $0.standardizedFileURL == old }) {
+                arrivedWhilePaused[index] = new
+            }
+        } catch {
+            model.record(
+                ActivityEntry(
+                    kind: .error,
+                    detail: "Could not rename \(current.lastPathComponent) from its contents: \(error.localizedDescription)",
+                    url: current,
+                    fileName: current.lastPathComponent
+                ),
+                watchFolderID: profileID
+            )
+        }
+    }
+
+    private func cancelContentRenames() {
+        contentTasks.values.forEach { $0.cancel() }
+        contentTasks.removeAll()
+        contentTracker.cancelAll()
     }
 
     private func rememberStable(_ url: URL, stableAt: Date) {
@@ -235,6 +305,11 @@ final class WatchFolderController {
                 deferred.append(item)
                 continue
             }
+            // Wait (up to 30 s) for a content-aware name so rules see it.
+            if contentTracker.shouldHoldFiling(item.url, now: Date()) {
+                deferred.append(item)
+                continue
+            }
             if !applyIngest(item.url, stableAt: item.stableAt, policy: profile.liveIngestPolicy) {
                 // Empty / still-writing — keep waiting with original stableAt.
                 deferred.append(item)
@@ -244,8 +319,16 @@ final class WatchFolderController {
         persistWaitingForAge()
         ensureAgeGateHeartbeat()
 
-        guard let next = waitingForAge.min(by: { $0.stableAt < $1.stableAt }) else { return }
-        let delay = FileAgeGate.delayUntilEligible(stableAt: next.stableAt, wait: profile.organizingWait)
+        let now = Date()
+        let delays = waitingForAge.map { item -> TimeInterval in
+            let ageDelay = FileAgeGate.delayUntilEligible(stableAt: item.stableAt, wait: profile.organizingWait)
+            // A held file wakes the gate when its content job times out, not in a busy loop.
+            if contentTracker.shouldHoldFiling(item.url, now: now) {
+                return max(ageDelay, contentTracker.nextRelease(now: now) ?? 0)
+            }
+            return ageDelay
+        }
+        guard let delay = delays.min() else { return }
         ageGateTask = Task { @MainActor in
             let nanoseconds = UInt64(max(delay, 0.05) * 1_000_000_000)
             try? await Task.sleep(nanoseconds: nanoseconds)
@@ -324,6 +407,10 @@ final class WatchFolderController {
             }
             model.recordOrganized(entries, watchFolderID: profileID)
             model.requestOpenRouterIfNeeded(entries: entries)
+            // Timed out: a late content name renames the file where it was filed.
+            if let filed = entries.last(where: { $0.kind == .moved })?.url {
+                contentTracker.noteMoved(from: url, to: filed)
+            }
             return true
         case .skipped(let entry), .error(let entry):
             model.record(entry, watchFolderID: profileID)
