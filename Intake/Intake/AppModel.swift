@@ -711,11 +711,16 @@ final class AppModel {
         }
     }
 
-    func handleStableFile(_ url: URL, stableAt: Date = Date()) {
+    func handleStableFile(_ reportedURL: URL, stableAt: Date = Date()) {
         if isOrganizingExisting {
-            arrivedDuringOrganize.append(url)
+            arrivedDuringOrganize.append(reportedURL)
             return
         }
+        // A repeated or late stable event can name a file that was already renamed
+        // or moved. Skip it instead of logging a second row for the same file, and
+        // use the spelling on disk so one file never queues under two names.
+        guard FileManager.default.fileExists(atPath: reportedURL.path) else { return }
+        let url = FileIdentity.onDiskURL(for: reportedURL)
         let current = applyRenameOnStableIfNeeded(url)
         rememberStable(current, stableAt: stableAt)
         if isPaused {

@@ -56,8 +56,10 @@ public struct UndoService: Equatable, Sendable {
         guard fileManager.fileExists(atPath: after.path) else {
             return .missingFile
         }
+        // A case-only rename's old name resolves to the file itself on APFS.
         if fileManager.fileExists(atPath: before.path),
-           before.standardizedFileURL != after.standardizedFileURL {
+           before.standardizedFileURL != after.standardizedFileURL,
+           !FileIdentity.isSameFile(before, after) {
             return .collision
         }
         return .eligible
