@@ -11,6 +11,13 @@ public enum ActivityLog: Sendable {
         Array(entries.prefix(maximumEntries))
     }
 
+    /// Entries from one watch folder, or all of them when `watchFolderID` is
+    /// `nil`. Older rows without an id count as profile #1.
+    public static func filtered(_ entries: [ActivityEntry], watchFolderID: String?) -> [ActivityEntry] {
+        guard let watchFolderID else { return entries }
+        return entries.filter { $0.effectiveWatchFolderID == watchFolderID }
+    }
+
     public static func encode(_ entries: [ActivityEntry]) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

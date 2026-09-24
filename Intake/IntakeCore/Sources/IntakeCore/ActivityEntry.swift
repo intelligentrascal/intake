@@ -24,6 +24,14 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
     /// The file's source domain, when where-from metadata named one. Optional
     /// for older Activity rows and for files with no known source.
     public var sourceDomain: String?
+    /// The watch folder profile this change came from. Optional: rows written
+    /// before multiple watch folders have none and count as profile #1.
+    public var watchFolderID: String?
+
+    /// `watchFolderID`, with older rows defaulting to profile #1.
+    public var effectiveWatchFolderID: String {
+        watchFolderID ?? WatchFolderProfile.primaryID
+    }
 
     public var verb: String {
         switch kind {
@@ -61,7 +69,8 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         destinationFolder: String? = nil,
         beforePath: String? = nil,
         afterPath: String? = nil,
-        sourceDomain: String? = nil
+        sourceDomain: String? = nil,
+        watchFolderID: String? = nil
     ) {
         self.id = id
         self.date = date
@@ -73,5 +82,6 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         self.beforePath = beforePath
         self.afterPath = afterPath
         self.sourceDomain = sourceDomain
+        self.watchFolderID = watchFolderID
     }
 }

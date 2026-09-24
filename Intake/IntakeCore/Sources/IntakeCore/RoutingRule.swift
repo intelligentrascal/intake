@@ -31,6 +31,8 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
     public var builtInCategory: FileCategory?
     /// Pattern for creating date-based subfolders. Defaults to `none`.
     public var subfolderPattern: SubfolderPattern
+    /// Which watch folders this rule applies to. Defaults to all.
+    public var scope: RuleScope
 
     /// Built-in taxonomy category, or `.other` for custom rules.
     public var category: FileCategory {
@@ -56,7 +58,8 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
         isEnabled: Bool = true,
         isBuiltIn: Bool = false,
         builtInCategory: FileCategory? = nil,
-        subfolderPattern: SubfolderPattern = .none
+        subfolderPattern: SubfolderPattern = .none,
+        scope: RuleScope = .allWatchFolders
     ) {
         self.id = id
         self.folderName = folderName
@@ -67,6 +70,7 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
         self.isBuiltIn = isBuiltIn
         self.builtInCategory = builtInCategory
         self.subfolderPattern = subfolderPattern
+        self.scope = scope
     }
 
     public init(category: FileCategory, extensions: Set<String>, isEnabled: Bool = true) {
@@ -88,7 +92,8 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
         conditions: [RuleCondition] = [],
         isEnabled: Bool = true,
         id: String = "custom-\(UUID().uuidString)",
-        subfolderPattern: SubfolderPattern = .none
+        subfolderPattern: SubfolderPattern = .none,
+        scope: RuleScope = .allWatchFolders
     ) -> RoutingRule {
         RoutingRule(
             id: id,
@@ -99,7 +104,8 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
             isEnabled: isEnabled,
             isBuiltIn: false,
             builtInCategory: nil,
-            subfolderPattern: subfolderPattern
+            subfolderPattern: subfolderPattern,
+            scope: scope
         )
     }
 
@@ -112,12 +118,13 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, folderName, systemImage, extensions, conditions, isEnabled, isBuiltIn, builtInCategory, subfolderPattern
+        case id, folderName, systemImage, extensions, conditions, isEnabled, isBuiltIn, builtInCategory, subfolderPattern, scope
     }
 
     /// Rules saved before conditions existed decode with an empty list, so
     /// persisted 1.2 rules load unchanged. Rules saved before subfolderPattern
-    /// existed decode with `.none`, preserving existing behavior.
+    /// existed decode with `.none`, and rules saved before scopes existed
+    /// decode as applying to all watch folders — preserving existing behavior.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -129,5 +136,6 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
         isBuiltIn = try container.decode(Bool.self, forKey: .isBuiltIn)
         builtInCategory = try container.decodeIfPresent(FileCategory.self, forKey: .builtInCategory)
         subfolderPattern = try container.decodeIfPresent(SubfolderPattern.self, forKey: .subfolderPattern) ?? .none
+        scope = try container.decodeIfPresent(RuleScope.self, forKey: .scope) ?? .allWatchFolders
     }
 }
