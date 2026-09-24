@@ -991,8 +991,18 @@ final class AppModel {
             snoozedUntil: snoozedUntil,
             ignorePolicy: ignorePolicy,
             managedFolderNames: managedFolderNames,
-            hashCache: cleanupHashCache
+            hashCache: cleanupHashCache,
+            mountedVolumeURLs: mountedVolumeURLs()
         ).candidates()
+    }
+
+    /// Currently mounted volumes, for skipping installers whose disk image
+    /// is already mounted. Never mounts anything itself — read-only.
+    private func mountedVolumeURLs() -> [URL] {
+        FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: nil,
+            options: [.skipHiddenVolumes]
+        ) ?? []
     }
 
     func fileAway(_ candidate: CleanupCandidate) {

@@ -10,16 +10,34 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<!--
+	  GH-28 installer cleanup: ~/Applications isn't one of the sandbox's
+	  standard user-data folders (unlike Desktop/Documents/Downloads), so
+	  it needs an explicit read-only exception to list app bundles there
+	  and read their Info.plist for name matching. /Applications itself
+	  needs no exception — reading a world-readable system location's
+	  metadata already works under the sandbox as-is.
+	-->
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
 		<string>/.local/bin/</string>
+		<string>/Applications/</string>
 	</array>
+	<!--
+	  GH-28 installer cleanup: .pkg/.mpkg matching prefers the installed
+	  package receipt (pkgutil) over a name guess, when it's readable.
+	  This exception only covers the read-only receipts database; a
+	  denied read (e.g. under a stricter sandbox than tested here) just
+	  falls back to normalized-name matching against /Applications, so
+	  the exception failing closed is an accepted, tested outcome.
+	-->
 	<key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
 	<array>
 		<string>/opt/homebrew/bin/</string>
 		<string>/opt/homebrew/sbin/</string>
 		<string>/usr/local/bin/</string>
 		<string>/usr/local/sbin/</string>
+		<string>/private/var/db/receipts/</string>
 	</array>
 </dict>
 </plist>

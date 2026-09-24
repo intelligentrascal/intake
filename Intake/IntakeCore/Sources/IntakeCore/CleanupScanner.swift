@@ -4,6 +4,9 @@ public struct CleanupScanner: Sendable {
     /// 24h of unchanged size/modification date marks a download abandoned.
     public static let abandonedDownloadInterval: TimeInterval = 24 * 60 * 60
 
+    /// Installer file extensions Cleanup checks against installed apps.
+    public static let installerExtensions: Set<String> = ["dmg", "pkg", "mpkg"]
+
     public var watchFolder: URL
     public var thresholdDays: Int
     public var includeWatchRoot: Bool
@@ -11,6 +14,15 @@ public struct CleanupScanner: Sendable {
     public var ignorePolicy: DownloadIgnorePolicy
     public var managedFolderNames: Set<String>
     public var hashCache: DuplicateHashCache
+    /// Where installed apps are looked for when matching installer files —
+    /// injected so tests can point at a fake Applications folder instead of
+    /// the real `/Applications` and `~/Applications`.
+    public var applicationsFolders: [URL]
+    /// Currently mounted volumes (their URLs' last path components are the
+    /// volume names) — installers whose disk image is already mounted are
+    /// skipped rather than offered for cleanup.
+    public var mountedVolumeURLs: [URL]
+    public var packageReceiptResolver: PackageReceiptResolver
 
     public init(
         watchFolder: URL,
@@ -19,7 +31,10 @@ public struct CleanupScanner: Sendable {
         snoozedUntil: [String: Date] = [:],
         ignorePolicy: DownloadIgnorePolicy = DownloadIgnorePolicy(),
         managedFolderNames: Set<String> = DefaultTaxonomy.managedFolderNames,
-        hashCache: DuplicateHashCache = DuplicateHashCache()
+        hashCache: DuplicateHashCache = DuplicateHashCache(),
+        applicationsFolders: [URL] = InstalledAppMatcher.defaultApplicationsFolders(),
+        mountedVolumeURLs: [URL] = [],
+        packageReceiptResolver: PackageReceiptResolver = PackageReceiptResolver()
     ) {
         self.watchFolder = watchFolder
         self.thresholdDays = thresholdDays
@@ -28,6 +43,9 @@ public struct CleanupScanner: Sendable {
         self.ignorePolicy = ignorePolicy
         self.managedFolderNames = managedFolderNames
         self.hashCache = hashCache
+        self.applicationsFolders = applicationsFolders
+        self.mountedVolumeURLs = mountedVolumeURLs
+        self.packageReceiptResolver = packageReceiptResolver
     }
 
     /// Key used to look up/store a snooze for `url`. Symlink-resolved and
@@ -53,10 +71,14 @@ public struct CleanupScanner: Sendable {
         }
 
         let duplicateOriginals = duplicateOriginals(among: infos, fileManager: fileManager)
+        let installedApps = InstalledAppMatcher.installedApps(in: applicationsFolders, fileManager: fileManager)
 
         var results: [CleanupCandidate] = []
         for (url, info) in infos {
             if isSnoozed(url, normalizedSnoozes: normalizedSnoozes, now: now) {
+                continue
+            }
+            if isMountedInstallerImage(url) {
                 continue
             }
             if let original = duplicateOriginals[url] {
@@ -81,6 +103,22 @@ public struct CleanupScanner: Sendable {
                         )
                     )
                 }
+                continue
+            }
+            if let match = installedAppMatch(
+                for: url,
+                installerDate: info.modificationDate,
+                installedApps: installedApps,
+                fileManager: fileManager
+            ) {
+                results.append(
+                    CleanupCandidate(
+                        url: url,
+                        byteCount: info.size,
+                        lastUsed: info.lastUsed,
+                        reason: .installed(appName: match.displayName, appURL: match.url)
+                    )
+                )
                 continue
             }
             guard info.lastUsed <= cutoff else {
@@ -116,6 +154,44 @@ public struct CleanupScanner: Sendable {
             return false
         }
         return until > now
+    }
+
+    /// True for a `.dmg` whose disk image is currently mounted — the user is
+    /// actively using it, so it's skipped rather than offered for cleanup.
+    /// Never mounts an image itself; it only compares names against the
+    /// already-mounted volumes it was given.
+    private func isMountedInstallerImage(_ url: URL) -> Bool {
+        guard url.pathExtension.lowercased() == "dmg" else { return false }
+        let target = InstalledAppMatcher.normalize(url.lastPathComponent)
+        guard !target.isEmpty else { return false }
+        return mountedVolumeURLs.contains { InstalledAppMatcher.normalize($0.lastPathComponent) == target }
+    }
+
+    /// The installed app an installer file matches, if its name (or, for
+    /// `.pkg`/`.mpkg`, its install receipt) points at an app in
+    /// `applicationsFolders` that's newer than the installer itself.
+    private func installedAppMatch(
+        for url: URL,
+        installerDate: Date,
+        installedApps: [InstalledAppMatcher.InstalledApp],
+        fileManager: FileManager
+    ) -> InstalledAppMatcher.InstalledApp? {
+        guard Self.installerExtensions.contains(url.pathExtension.lowercased()) else { return nil }
+
+        let ext = url.pathExtension.lowercased()
+        if ext == "pkg" || ext == "mpkg",
+           let receiptMatch = packageReceiptResolver.installedApp(forPackageAt: url, fileManager: fileManager),
+           receiptMatch.date > installerDate
+        {
+            return receiptMatch
+        }
+
+        if let nameMatch = InstalledAppMatcher.bestMatch(forInstallerNamed: url.lastPathComponent, in: installedApps),
+           nameMatch.date > installerDate
+        {
+            return nameMatch
+        }
+        return nil
     }
 
     /// Per-file facts pulled once per scan and shared across stale, duplicate

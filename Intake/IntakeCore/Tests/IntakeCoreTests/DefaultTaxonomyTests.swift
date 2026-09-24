@@ -46,6 +46,7 @@ struct DefaultTaxonomyTests {
         ("gz", .archives),
         ("dmg", .installers),
         ("pkg", .installers),
+        ("mpkg", .installers),
         ("xyz", .other),
         ("", .other),
     ] as [(String, FileCategory)])
