@@ -248,6 +248,7 @@ final class AppModel {
         SettingsSplitViewAutosave.resetSettingsSplitFrames()
 
         applyActivationPolicy()
+        observeWindowVisibilityForActivationPolicy()
         notificationDigestService.attach(to: self)
         // Restores the heartbeat if the user already turned notifications on in
         // a previous session — never requests authorization at launch for a
@@ -497,8 +498,60 @@ final class AppModel {
         UserDefaults.standard.set(show, forKey: SettingsKey.showMenuBar)
     }
 
+    /// True for a titled, on-screen Intake window that should count toward Dock /
+    /// ⌘Tab visibility — the Settings window or the Activity window. Excludes the
+    /// MenuBarExtra popover/panel, alerts/sheets/QuickLook panels, and the zero-size
+    /// stamp views used to bridge AppKit reopen to SwiftUI scenes.
+    private func isUserFacingChromeWindow(_ window: NSWindow) -> Bool {
+        guard window.isVisible, !window.isMiniaturized else { return false }
+        if window.isIntakeActivityWindow { return true }
+        return isUsableSettingsWindow(window)
+    }
+
+    /// Whether any Settings or Activity window is currently on-screen. Drives
+    /// `applyActivationPolicy()`'s menu-bar-app-with-a-window behavior: while true,
+    /// the app shows in the Dock / ⌘Tab even with "Show in Dock" off.
+    private var hasUserFacingWindow: Bool {
+        NSApp.windows.contains { isUserFacingChromeWindow($0) }
+    }
+
+    /// Standard menu-bar-app pattern: `.regular` whenever "Show in Dock" is on, or
+    /// whenever a user-facing window (Settings / Activity) is visible — so Intake
+    /// reaches the Dock and ⌘Tab / AltTab switchers while such a window is open,
+    /// even with "Show in Dock" off. Falls back to `.accessory` (menu-bar-only)
+    /// once "Show in Dock" is off and no such window remains. Re-activating on a
+    /// no-op transition would steal focus for no reason, so this only calls
+    /// `NSApp.activate` when the policy actually flips to `.regular`.
     func applyActivationPolicy() {
-        NSApp.setActivationPolicy(showsInDock ? .regular : .accessory)
+        let desired: NSApplication.ActivationPolicy = (showsInDock || hasUserFacingWindow) ? .regular : .accessory
+        guard NSApp.activationPolicy() != desired else { return }
+        NSApp.setActivationPolicy(desired)
+        if desired == .regular {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Recomputes `applyActivationPolicy()` on every Settings/Activity window
+    /// visibility change, so the Dock/⌘Tab presence tracks whichever window is
+    /// actually on-screen. Registered once at launch; `AppModel` lives for the
+    /// app's lifetime so the observers are never torn down.
+    ///
+    /// `willClose` / `didMiniaturize` fire while the window is still in
+    /// `NSApp.windows`, so the recheck is deferred to the next run-loop tick
+    /// (matching `resignAndHideActivityWindows`'s own async pattern) once the
+    /// window has actually left the visible set.
+    private func observeWindowVisibilityForActivationPolicy() {
+        let center = NotificationCenter.default
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didDeminiaturizeNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.applyActivationPolicy()
+            }
+        }
+        for name in [NSWindow.willCloseNotification, NSWindow.didMiniaturizeNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                DispatchQueue.main.async { self?.applyActivationPolicy() }
+            }
+        }
     }
 
     func openActivity() {
