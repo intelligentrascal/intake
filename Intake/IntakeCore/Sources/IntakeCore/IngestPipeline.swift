@@ -9,6 +9,9 @@ public struct IngestPlan: Equatable, Sendable {
     public var destinationURL: URL
     /// The file's source domain, when the where-from metadata on disk names one.
     public var sourceDomain: String?
+    /// True when `destinationDirectory` did not exist on disk when this plan was made —
+    /// applying it will create a new lazy folder.
+    public var isNewFolder: Bool
 
     public var needsRename: Bool {
         sourceURL.lastPathComponent != renamedFileName
@@ -56,6 +59,7 @@ public struct IngestPipeline: Sendable {
             renamed,
             isDirectory: false
         )
+        let isNewFolder = !fileManager.fileExists(atPath: destinationDirectory.path)
         return IngestPlan(
             sourceURL: sourceURL,
             renamedFileName: renamed,
@@ -63,7 +67,8 @@ public struct IngestPipeline: Sendable {
             destinationFolderName: destinationFolderName,
             destinationDirectory: destinationDirectory,
             destinationURL: destinationURL,
-            sourceDomain: facts.sourceHost
+            sourceDomain: facts.sourceHost,
+            isNewFolder: isNewFolder
         )
     }
 

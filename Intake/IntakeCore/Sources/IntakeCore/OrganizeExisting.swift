@@ -5,7 +5,6 @@ public enum OrganizeExistingCopy: Sendable {
     public static let organizeButton = "Organize"
     public static let cancelButton = "Cancel"
     public static let showActivityButton = "Show Activity"
-    public static let confirmationThreshold = 10
 
     public static func confirmTitle(folderName: String) -> String {
         "Organize files already in \(folderName)?"
@@ -18,15 +17,49 @@ public enum OrganizeExistingCopy: Sendable {
         "Automatic organizing is off. This one-shot still runs and does not turn watching back on."
 }
 
+/// Why a root file was left out of an Organize Existing run.
+public enum OrganizeSkipReason: String, Equatable, Sendable, Codable {
+    /// An in-progress download (partial extension, browser temp file, `Unconfirmed …`).
+    case stillDownloading
+    /// Ignored by policy: dotfile, a managed category folder, or similar.
+    case ignored
+    /// A zero-byte placeholder — a false-stable or still-writing download.
+    case emptyPlaceholder
+    /// The file was excluded by the user in the Organize Existing preview.
+    case excluded
+    /// The file changed (size differs from what the preview saw) between preview and apply.
+    case changedSincePreview
+    /// The file was moved or deleted between preview and apply.
+    case missingSincePreview
+
+    public var reasonText: String {
+        switch self {
+        case .stillDownloading: "Still downloading"
+        case .ignored: "Ignored"
+        case .emptyPlaceholder: "Empty placeholder"
+        case .excluded: "Excluded"
+        case .changedSincePreview: "Changed since preview"
+        case .missingSincePreview: "No longer there"
+        }
+    }
+}
+
+/// A root file the scanner left out of `eligible`, with why.
+public struct OrganizeExistingSkip: Equatable, Sendable {
+    public var url: URL
+    public var reason: OrganizeSkipReason
+
+    public init(url: URL, reason: OrganizeSkipReason) {
+        self.url = url
+        self.reason = reason
+    }
+}
+
 public struct OrganizeExistingScan: Equatable, Sendable {
     public var eligible: [URL]
-    public var skipped: [URL]
+    public var skipped: [OrganizeExistingSkip]
 
-    public var needsConfirmation: Bool {
-        eligible.count >= OrganizeExistingCopy.confirmationThreshold
-    }
-
-    public init(eligible: [URL], skipped: [URL]) {
+    public init(eligible: [URL], skipped: [OrganizeExistingSkip]) {
         self.eligible = eligible
         self.skipped = skipped
     }
@@ -74,7 +107,7 @@ public struct OrganizeExistingScanner: Sendable {
         )) ?? []
 
         var eligible: [URL] = []
-        var skipped: [URL] = []
+        var skipped: [OrganizeExistingSkip] = []
 
         let sorted = items.sorted {
             $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
@@ -88,11 +121,14 @@ public struct OrganizeExistingScanner: Sendable {
                 continue
             }
             if ignorePolicy.shouldIgnore(url: standardized, kind: .appeared, isDirectory: false) {
-                skipped.append(standardized)
+                let reason: OrganizeSkipReason = ignorePolicy.isIncompleteDownloadExtension(url: standardized)
+                    ? .stillDownloading
+                    : .ignored
+                skipped.append(OrganizeExistingSkip(url: standardized, reason: reason))
                 continue
             }
             if !DownloadWriteGate.allowsOrganizeOrRename(at: standardized, fileManager: fileManager) {
-                skipped.append(standardized)
+                skipped.append(OrganizeExistingSkip(url: standardized, reason: .emptyPlaceholder))
                 continue
             }
             eligible.append(standardized)
@@ -167,6 +203,98 @@ public struct OrganizeExistingProcessor: Sendable {
                 cancelled: cancelled
             ),
             entries
+        )
+    }
+
+    /// Applies exactly the chosen preview items (excluded ones never reach here).
+    /// Re-checks each file before touching it: gone, or a size that no longer
+    /// matches what the preview saw, is logged as `skipped` with a reason —
+    /// never as an error. Otherwise runs the pipeline fresh, which recomputes
+    /// the rename/collision suffix from the current disk state — the same
+    /// simulation the preview used, so the result matches it when nothing changed.
+    public func applyPreview(
+        items: [OrganizePreviewItem],
+        alreadySkipped: Int = 0,
+        isCancelled: () -> Bool = { false },
+        fileManager: FileManager = .default,
+        now: Date = Date(),
+        onProgress: ((Int, Int) -> Void)? = nil,
+        onFileResult: ((FileResult) -> Void)? = nil
+    ) -> (summary: OrganizeExistingSummary, entries: [ActivityEntry]) {
+        var organized = 0
+        var skipped = alreadySkipped
+        var errors = 0
+        var entries: [ActivityEntry] = []
+        var cancelled = false
+        let pipeline = IngestPipeline(watchFolder: watchFolder, rules: rules)
+
+        for (index, item) in items.enumerated() {
+            if isCancelled() {
+                cancelled = true
+                break
+            }
+            let source = item.plan.sourceURL
+            let result: FileResult
+            if !fileManager.fileExists(atPath: source.path) {
+                result = .skipped(skipEntry(for: source, reason: .missingSincePreview, now: now))
+            } else if DownloadWriteGate.fileSize(at: source, fileManager: fileManager)
+                != item.sizeAtPreview
+            {
+                result = .skipped(skipEntry(for: source, reason: .changedSincePreview, now: now))
+            } else if let freshPlan = pipeline.plan(for: source, fileManager: fileManager) {
+                do {
+                    let produced = try pipeline.apply(freshPlan, fileManager: fileManager, now: now)
+                    result = .organized(produced)
+                } catch {
+                    result = .error(
+                        ActivityEntry(
+                            date: now,
+                            kind: .error,
+                            detail: "Could not file \(source.lastPathComponent): \(error.localizedDescription)",
+                            url: source,
+                            fileName: source.lastPathComponent
+                        )
+                    )
+                }
+            } else {
+                result = .skipped(skipEntry(for: source, reason: .missingSincePreview, now: now))
+            }
+
+            switch result {
+            case .organized(let produced):
+                organized += 1
+                entries.append(contentsOf: produced)
+            case .skipped(let entry):
+                skipped += 1
+                entries.append(entry)
+            case .error(let entry):
+                errors += 1
+                entries.append(entry)
+            case .notInWatchRoot:
+                skipped += 1
+            }
+            onFileResult?(result)
+            onProgress?(index + 1, items.count)
+        }
+
+        return (
+            OrganizeExistingSummary(
+                organized: organized,
+                skipped: skipped,
+                errors: errors,
+                cancelled: cancelled
+            ),
+            entries
+        )
+    }
+
+    private func skipEntry(for url: URL, reason: OrganizeSkipReason, now: Date) -> ActivityEntry {
+        ActivityEntry(
+            date: now,
+            kind: .skipped,
+            detail: "Skipped \(url.lastPathComponent) — \(reason.reasonText.lowercased())",
+            url: url,
+            fileName: url.lastPathComponent
         )
     }
 
