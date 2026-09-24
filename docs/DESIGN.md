@@ -15,7 +15,7 @@
 - Prefer system `Form` / `List` / `Table` / `Inspector`, grouped form style, section footers
 - SF Symbols for chrome icons; custom app + menu-bar icons only
 - Respect light/dark, accent color, Dynamic Type, Reduce Motion
-- Independent **Show in Dock** / **Show in menu bar** toggles; at least one must stay on
+- Independent **Show in Dock** / **Show in menu bar** toggles; at least one must stay on. With Show in Dock off, `AppModel.applyActivationPolicy()` still switches to `.regular` while Settings or Activity is on-screen (Dock icon, ⌘Tab, AltTab), and back to `.accessory` once the last such window closes — the standard menu-bar-app pattern.
 
 ## Settings IA (v1)
 
