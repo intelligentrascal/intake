@@ -11,7 +11,7 @@
 
 - Dock **on** by default (app icon: soft-catch document in a U cradle). Users may hide it; menu bar can remain. Dock click / launch / reopen bring **Settings** forward — not Activity. Activity is a separate window via **Open Activity**.
 - `MenuBarExtra` **on** by default for status + quick pause/resume, using a monochrome **template** soft-catch glyph (`isTemplate = true`). Watching vs Paused are distinct dense 16pt silhouettes (thick cradle; Paused uses two pause bars). Pause / Resume verbs stay on the menu; Settings uses **Automatic organizing**. No wait countdown in the menu bar.
-- `Settings` scene with a plain `HStack` sidebar (⌘, / Settings…) — not `NavigationSplitView` or `List(selection:)`, which never received clicks under the Settings scene. Sidebar 192pt of `.plain` Buttons that set `selectedSettingsPane` (the single source of truth); the container is an accessibility list ("Settings sections", `.isSelected` on the current row) and ↑/↓ move between panes; no "Intake" header. Keyboard shortcuts ⌘1–⌘7 jump between panes. Grouped Forms without extra outer padding that clips tables.
+- `Settings` scene with a plain `HStack` sidebar (⌘, / Settings…) — not `NavigationSplitView` or `List(selection:)`, which never received clicks under the Settings scene. Sidebar 192pt of `.plain` Buttons that set `selectedSettingsPane` (the single source of truth); the container is an accessibility list ("Settings sections", `.isSelected` on the current row) and ↑/↓ move between panes; no "Intake" header. Rows have tooltips showing ⌘1–⌘7; keyboard shortcuts jump between panes. Visible accent outline marks the selected row when the sidebar has keyboard focus. Grouped Forms without extra outer padding that clips tables.
 - Prefer system `Form` / `List` / `Table` / `Inspector`, grouped form style, section footers
 - SF Symbols for chrome icons; custom app + menu-bar icons only
 - Respect light/dark, accent color, Dynamic Type, Reduce Motion
@@ -20,9 +20,9 @@
 ## Settings IA (v1)
 
 1. General — four sections: **Watch folder(s)** (status: Watching / Paused / Organizing off / Needs access; each folder's **Automatic organizing**, **Rename when download finishes**, **Wait before organizing** sit with that folder), **Existing files** (Organize Existing…, **Open Activity**), **Notifications**, **Startup and appearance** (**Open at login**, Show in Dock, Show in menu bar)
-2. Rules — editable filing rules, drag order (⌥⌘↑/↓), custom rules, on-device suggestions; delete (⌘⌫) and reset confirm
+2. Rules — editable filing rules, drag order (⌥⌘↑/↓), custom rules; on-device suggestions (shown only if there are any or dismissed ones to reset); delete (⌘⌫) and reset confirm
 3. Cleanup — threshold shown once: “Unused for [field] days” with a Stepper beside the field (rescan debounced ~0.5 s), include roots, multi-select decision queue with context menu (Quick Look, Reveal in Finder, File Away, Keep, Delete…); double-click/Space for Quick Look
-4. Activity — audit trail of ingest and cleanup (open the dedicated window from here or the menu)
+4. Activity — audit trail of ingest and cleanup (open the dedicated window from here or the menu); Open Activity button
 5. AI — **Content-aware rename** section first (off by default: toggle, naming provider picker On this Mac | OpenRouter, PDFs / Images toggles, Name template field with a token caption, **Try on a File…** with inline result); **OpenRouter setup** disclosure (key, base URL, model) shown only when OpenRouter is enabled; folder suggestions toggle; **Intake spend** section with reset; account/cost info shows whenever OpenRouter enabled; privacy text and "file contents leave this Mac" line are provider-conditional
 6. About — license, links; privacy text describes actual data flow based on selected naming provider
 7. Feedback — email field notes it's included in public GitHub issue
@@ -45,9 +45,9 @@ General → each watch folder's settings, above Rename when download finishes. N
 
 ## Activity
 
-SwiftUI `Window("Activity", id: "activity")` with `.defaultLaunchBehavior(.suppressed)` — audit trail, not the Dock default. Launch / Dock reopen still bring **Settings**. Activity opens only via Open Activity / menu / `openActivity()`. Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Empty: ContentUnavailableView "No activity yet". Double-click or Reveal in Finder (toolbar or context menu) opens the file — Reveal resolves through the row's before/after path chain so a renamed-then-moved file still opens where it actually is, falling back to its last known parent folder; selection alone does not reveal. Context menu: Reveal / Copy path. Persists across launches with a cap.
+SwiftUI `Window("Activity", id: "activity")` with `.defaultLaunchBehavior(.suppressed)` — audit trail, not the Dock default. Launch / Dock reopen still bring **Settings**. Activity opens via Open Activity button / menu / `openActivity()`. Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Empty: ContentUnavailableView "No activity yet". Double-click or Reveal in Finder (toolbar or context menu) opens the file — Reveal resolves through the row's before/after path chain so a renamed-then-moved file still opens where it actually is, falling back to its last known parent folder; selection alone does not reveal. Context menu: Reveal / Copy path. Persists across launches with a cap.
 
-The same list (`ActivityListView`) is embedded read-only in Settings → Activity (`showsRevealToolbarItem: false`): no toolbar there, since an `NSToolbar` on the Settings window would grow its title bar and shift every pane's content on switch. Settings keeps Reveal via double-click and the context menu (Control-click).
+The same list (`ActivityListView`) is embedded read-only in Settings → Activity with an **Open Activity** button in the section header. No toolbar in Settings, since an `NSToolbar` on the Settings window would grow its title bar and shift every pane's content on switch. Settings keeps Reveal via double-click and the context menu (Control-click).
 
 Native **MeshGradient** atmosphere on the Activity background (near-black + `#1D16E9` @ ~34%). Reduce Motion / Increase Contrast / Reduce Transparency → static wash or solid `surface`. Optional faint Settings wash behind the split view. Never React, WKWebView, or Paper web shaders.
 

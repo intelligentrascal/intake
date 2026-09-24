@@ -18,6 +18,11 @@ struct FeedbackSettingsView: View {
     @State private var validationMessage: String?
     /// Driven via onChange so Form + text fields reliably invalidate the submit button.
     @State private var canSubmit = false
+    @State private var pasteErrorMessage: String?
+    /// Tracks whether the user has typed into a required field yet, so we don't
+    /// show "required" captions on a freshly opened, still-empty form.
+    @State private var titleTouched = false
+    @State private var detailsTouched = false
 
     private let maxScreenshots = 3
 
@@ -38,6 +43,11 @@ struct FeedbackSettingsView: View {
             Section {
                 TextField("Short summary", text: $titleText)
                     .accessibilityLabel("Title")
+                if showTitleRequiredHint {
+                    Text("Title is required.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 TextField(
                     "What happened, what you expected, steps if it’s a bug",
                     text: $detailsText,
@@ -45,6 +55,11 @@ struct FeedbackSettingsView: View {
                 )
                 .lineLimit(5...12)
                 .accessibilityLabel("Details")
+                if showDetailsRequiredHint {
+                    Text("Details are required.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } header: {
                 Text("Report")
             }
@@ -82,6 +97,7 @@ struct FeedbackSettingsView: View {
                             Spacer()
                             Button("Remove", role: .destructive) {
                                 screenshots.removeAll { $0.id == shot.id }
+                                pasteErrorMessage = nil
                             }
                             .accessibilityLabel("Remove screenshot \(index + 1)")
                         }
@@ -94,6 +110,11 @@ struct FeedbackSettingsView: View {
                         .disabled(screenshots.count >= maxScreenshots)
                     Button("Paste") { pasteScreenshot() }
                         .disabled(screenshots.count >= maxScreenshots)
+                }
+                if let pasteErrorMessage {
+                    Text(pasteErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(IntakeColor.warning)
                 }
                 Text("\(screenshots.count) of \(maxScreenshots)")
                     .font(.caption)
@@ -120,8 +141,14 @@ struct FeedbackSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .onChange(of: titleText) { _, _ in refreshCanSubmit() }
-        .onChange(of: detailsText) { _, _ in refreshCanSubmit() }
+        .onChange(of: titleText) { _, _ in
+            titleTouched = true
+            refreshCanSubmit()
+        }
+        .onChange(of: detailsText) { _, _ in
+            detailsTouched = true
+            refreshCanSubmit()
+        }
         .alert("Almost done", isPresented: $showDoneAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -131,6 +158,16 @@ struct FeedbackSettingsView: View {
                 Text("GitHub opened with your text. Add any screenshots on the issue page if needed.")
             }
         }
+    }
+
+    /// Only surfaces once the user has typed into the field — a fresh, untouched
+    /// form shouldn't greet the user with "required" captions.
+    private var showTitleRequiredHint: Bool {
+        titleTouched && titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var showDetailsRequiredHint: Bool {
+        detailsTouched && detailsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func refreshCanSubmit() {
@@ -179,6 +216,7 @@ struct FeedbackSettingsView: View {
         for url in panel.urls {
             guard screenshots.count < maxScreenshots else { break }
             if let image = NSImage(contentsOf: url) {
+                pasteErrorMessage = nil
                 screenshots.append(FeedbackScreenshot(image: image))
             }
         }
@@ -188,10 +226,11 @@ struct FeedbackSettingsView: View {
         guard screenshots.count < maxScreenshots else { return }
         let pb = NSPasteboard.general
         if let image = NSImage(pasteboard: pb) {
+            pasteErrorMessage = nil
             screenshots.append(FeedbackScreenshot(image: image))
             return
         }
-        validationMessage = "No image on the clipboard. Copy a screenshot, then Paste."
+        pasteErrorMessage = "No image on the clipboard. Copy a screenshot, then Paste."
     }
 
     private func copyScreenshotsToPasteboard(_ images: [NSImage]) {

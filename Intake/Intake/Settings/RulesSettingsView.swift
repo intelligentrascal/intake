@@ -10,7 +10,6 @@ struct RulesSettingsView: View {
 
     var body: some View {
         Form {
-            suggestionsSection
             if !model.ruleConflicts.isEmpty {
                 Section {
                     ForEach(model.ruleConflicts) { conflict in
@@ -57,7 +56,7 @@ struct RulesSettingsView: View {
                                         pendingResetRule = rule
                                     }
                                 } else {
-                                    Button("Delete", role: .destructive) {
+                                    Button("Delete…", role: .destructive) {
                                         pendingDeleteRule = rule
                                     }
                                 }
@@ -121,14 +120,16 @@ struct RulesSettingsView: View {
                         Button("Delete", role: .destructive) {
                             pendingDeleteRule = rule
                         }
+                        .help("Delete rule (⌘⌫)")
                     }
                     Spacer()
                 }
             } header: {
                 Text("Filing rules")
             } footer: {
-                Text("Each rule can match a file's type, name, source, or size; scoped rules only apply within their chosen watch folders. Drag to change order — the first enabled match wins. Unmatched files go to Other.")
+                Text("Each rule can match a file's type, name, source, or size; scoped rules only apply within their chosen watch folders. Drag, or use ⌥⌘↑/⌥⌘↓, to change order — the first enabled match wins. Unmatched files go to Other.")
             }
+            suggestionsSection
         }
         .formStyle(.grouped)
         .onAppear {
@@ -209,32 +210,29 @@ struct RulesSettingsView: View {
         }
     }
 
+    private var hasDismissedSuggestionMemory: Bool {
+        !model.suggestionMemory.neverExtensions.isEmpty
+            || !model.suggestionMemory.dismissedUntil.isEmpty
+    }
+
     @ViewBuilder
     private var suggestionsSection: some View {
-        Section {
-            if model.ruleSuggestions.isEmpty {
-                ContentUnavailableView(
-                    "No suggestions yet",
-                    systemImage: "lightbulb",
-                    description: Text("Suggestions appear after Intake sees repeating file types.")
-                )
-                .frame(minHeight: 120)
-            } else {
+        if !model.ruleSuggestions.isEmpty || hasDismissedSuggestionMemory {
+            Section {
                 ForEach(model.ruleSuggestions) { suggestion in
                     SuggestionRowView(suggestion: suggestion)
                 }
-            }
-        } header: {
-            Text("Suggestions")
-        } footer: {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Suggestions never change files until you accept. They stay on this Mac — Intake does not read file contents or go online to propose rules.")
-                if !model.suggestionMemory.neverExtensions.isEmpty
-                    || !model.suggestionMemory.dismissedUntil.isEmpty {
-                    Button("Reset dismissed suggestions") {
-                        model.resetDismissedSuggestions()
+            } header: {
+                Text("Suggestions")
+            } footer: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Suggestions never change files until you accept. They stay on this Mac — Intake does not read file contents or go online to propose rules. Dismiss hides a suggestion for 30 days; Never stops suggesting that file type until you reset dismissed suggestions.")
+                    if hasDismissedSuggestionMemory {
+                        Button("Reset dismissed suggestions") {
+                            model.resetDismissedSuggestions()
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -256,7 +254,7 @@ private struct RuleRowView: View {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .frame(width: 28)
-                .accessibilityLabel("Enabled")
+                .accessibilityLabel("Enable \(rule.folderName) rule")
             Label(rule.folderName, systemImage: rule.systemImage)
                 .frame(minWidth: 140, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
@@ -367,6 +365,9 @@ struct RuleEditorSheet: View {
     @State private var subfolderPattern: SubfolderPattern
     @State private var scope: RuleScope
     @State private var errorMessage: String?
+    /// Tracks whether the user has edited a field (or attempted Save) yet, so a
+    /// freshly opened sheet doesn't greet them with a "missing field" caption.
+    @State private var fieldsTouched = false
 
     init(item: RuleEditorItem) {
         self.item = item
@@ -391,7 +392,7 @@ struct RuleEditorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("Folder", text: $folderName)
+                TextField("Destination folder", text: $folderName)
                 TextField(
                     "Extensions",
                     text: $extensionsText,
@@ -406,6 +407,9 @@ struct RuleEditorSheet: View {
                 if let errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(IntakeColor.danger)
+                } else if fieldsTouched, let missingFieldMessage {
+                    Text(missingFieldMessage)
+                        .foregroundStyle(.secondary)
                 }
                 conditionsSection
                 if model.hasMultipleWatchFolders || !scope.isAll {
@@ -420,10 +424,27 @@ struct RuleEditorSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
+                        .disabled(missingFieldMessage != nil)
                 }
             }
         }
         .frame(minWidth: 480, minHeight: 420)
+        .onChange(of: folderName) { _, _ in
+            fieldsTouched = true
+            errorMessage = nil
+        }
+        .onChange(of: extensionsText) { _, _ in
+            fieldsTouched = true
+            errorMessage = nil
+        }
+        .onChange(of: conditions) { _, _ in
+            fieldsTouched = true
+            errorMessage = nil
+        }
+        .onChange(of: scope) { _, _ in
+            fieldsTouched = true
+            errorMessage = nil
+        }
     }
 
     @ViewBuilder
@@ -471,7 +492,7 @@ struct RuleEditorSheet: View {
                     }
                 }
             )) {
-                Text("All watch folders").tag(true)
+                Text("All Watch Folders").tag(true)
                 Text("Specific folders").tag(false)
             }
             if case .watchFolders(let ids) = scope {
@@ -516,7 +537,24 @@ struct RuleEditorSheet: View {
         }
     }
 
+    /// Cheap inline check so Save can stay disabled with a caption naming what's missing,
+    /// without duplicating the full token-parsing validation performed in `save()`.
+    private var missingFieldMessage: String? {
+        if folderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Enter a destination folder name."
+        }
+        let trimmedExtensions = extensionsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedExtensions.isEmpty && conditions.isEmpty {
+            return "Add at least one extension or condition."
+        }
+        if case .watchFolders(let ids) = scope, ids.isEmpty {
+            return "Choose at least one watch folder."
+        }
+        return nil
+    }
+
     private func save() {
+        fieldsTouched = true
         switch FolderNameToken.parse(folderName) {
         case .failure(let error):
             errorMessage = error.description

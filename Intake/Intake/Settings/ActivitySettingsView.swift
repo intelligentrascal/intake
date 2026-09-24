@@ -1,12 +1,22 @@
 import SwiftUI
 
 struct ActivitySettingsView: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
         Form {
             Section {
                 ActivityPaneBody()
+            } header: {
+                HStack {
+                    Text("Activity")
+                    Spacer()
+                    Button("Open Activity") {
+                        model.openActivity()
+                    }
+                }
             } footer: {
-                Text("Activity is an audit trail, not the Dock default. Open it from the menu bar or General. Double-click a row to reveal it in Finder, or Control-click for Reveal in Finder.")
+                Text("Double-click a row to reveal it in Finder; Control-click for more.")
             }
         }
         .formStyle(.grouped)

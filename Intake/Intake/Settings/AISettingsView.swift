@@ -31,7 +31,7 @@ struct AISettingsView: View {
             Section {
                 Toggle("Suggest folders with AI", isOn: $model.aiSuggestionsEnabled)
             } footer: {
-                Text("Off by default. Core organizing uses extension rules only. When no rule matches, OpenRouter suggests a folder from the file’s name and extension — never its contents. Suggestions don’t rename files.")
+                Text("Off by default. When no rule matches, OpenRouter suggests a folder using only a file’s name and your rule folder names — never its source, size, or contents. Suggestions don’t rename files.")
             }
             openRouterSection
             if model.openRouterSpendTracker.totalSpend > 0 {
@@ -163,7 +163,7 @@ struct AISettingsView: View {
         Section {
             LabeledContent("Total", value: String(format: "$%.4f", model.openRouterSpendTracker.totalSpend))
             LabeledContent("This Month", value: String(format: "$%.4f", model.openRouterSpendTracker.monthlySpend))
-            Button("Reset Spend…", role: .destructive) {
+            Button("Reset Spend…") {
                 showResetConfirmation = true
             }
             .alert("Reset Intake Spending?", isPresented: $showResetConfirmation) {
@@ -195,7 +195,7 @@ struct AISettingsView: View {
     }
 
     private var openRouterFooter: String {
-        var text = "The API key is stored in Keychain, not in preferences. Local rules run first. Folder suggestions send only a file’s name and extension."
+        var text = "The API key is stored in Keychain, not in preferences. Local rules run first. Folder suggestions send only a file’s name and your rule folder names."
         if contentAwareUsesOpenRouter {
             text += " Content-aware rename sends text extracted from your files."
         }
