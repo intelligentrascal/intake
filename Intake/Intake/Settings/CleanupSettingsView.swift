@@ -8,6 +8,16 @@ struct CleanupSettingsView: View {
         @Bindable var model = model
         Form {
             Section {
+                if model.hasMultipleWatchFolders {
+                    Picker("Watch folder", selection: $model.cleanupFolderScope) {
+                        Text("All Folders").tag(String?.none)
+                        Divider()
+                        ForEach(model.watchFolderProfiles) { profile in
+                            Text(profile.displayName).tag(Optional(profile.id))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
                 Stepper(value: $model.cleanupThresholdDays, in: 1...365) {
                     Text("Unused for \(model.cleanupThresholdDays) days")
                 }

@@ -42,6 +42,11 @@ struct ActivityWindowView: View {
         }
         .background(ActivityWindowConfigurator())
         .toolbar {
+            if model.hasMultipleWatchFolders {
+                ToolbarItem(placement: .automatic) {
+                    ActivityFolderFilterPicker()
+                }
+            }
             ToolbarItem(placement: .automatic) {
                 Button(model.isPaused ? "Resume" : "Pause") {
                     model.togglePaused()
@@ -57,6 +62,27 @@ struct ActivityWindowView: View {
         .animation(reduceMotion ? nil : .default, value: model.undoToast?.actionID)
         .intakeOrganizeExistingChrome()
         .intakeFirstRunTip()
+    }
+}
+
+/// Activity folder filter: All Folders, or one watch folder. Rows written
+/// before multiple watch folders count as the first folder.
+struct ActivityFolderFilterPicker: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Picker("Folder", selection: Binding(
+            get: { model.activityFolderFilter },
+            set: { model.activityFolderFilter = $0 }
+        )) {
+            Text("All Folders").tag(String?.none)
+            Divider()
+            ForEach(model.watchFolderProfiles) { profile in
+                Text(profile.displayName).tag(Optional(profile.id))
+            }
+        }
+        .pickerStyle(.menu)
+        .help("Show activity from one watch folder")
     }
 }
 
@@ -126,7 +152,7 @@ struct ActivityListView: View {
 
     var body: some View {
         List(selection: $selection) {
-            ForEach(model.activity) { entry in
+            ForEach(model.filteredActivity) { entry in
                 ActivityRow(entry: entry)
                     .tag(entry.id)
                     .listRowBackground(Color.clear)
@@ -179,7 +205,7 @@ struct ActivityListView: View {
 
     private var selectedEntry: ActivityEntry? {
         guard let selection else { return nil }
-        return model.activity.first { $0.id == selection }
+        return model.filteredActivity.first { $0.id == selection }
     }
 }
 
@@ -246,7 +272,12 @@ struct ActivityRow: View {
     }
 
     private var subtitle: String {
-        let when = entry.date.formatted(date: .abbreviated, time: .shortened)
+        let date = entry.date.formatted(date: .abbreviated, time: .shortened)
+        // With several watch folders, name the one this change came from.
+        let folder = model.hasMultipleWatchFolders
+            ? model.watchFolderName(id: entry.effectiveWatchFolderID)
+            : nil
+        let when = folder.map { "\($0) · \(date)" } ?? date
         switch entry.kind {
         case .renamed:
             return "Renamed · \(when)"

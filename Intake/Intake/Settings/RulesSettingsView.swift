@@ -159,6 +159,11 @@ private struct RuleRowView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if let scopeSummary {
+                    Text(scopeSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -169,6 +174,13 @@ private struct RuleRowView: View {
 
     private var conditionsSummary: String {
         rule.conditions.map(\.summary).joined(separator: ", ")
+    }
+
+    /// "Only Desktop, Screenshots" for a rule scoped to specific watch folders.
+    private var scopeSummary: String? {
+        guard case .watchFolders(let ids) = rule.scope else { return nil }
+        let names = model.watchFolderProfiles.filter { ids.contains($0.id) }.map(\.displayName)
+        return names.isEmpty ? "No watch folders" : "Only \(names.joined(separator: ", "))"
     }
 }
 
@@ -229,6 +241,7 @@ struct RuleEditorSheet: View {
     @State private var conditions: [RuleCondition]
     @State private var isEnabled: Bool
     @State private var subfolderPattern: SubfolderPattern
+    @State private var scope: RuleScope
     @State private var errorMessage: String?
 
     init(item: RuleEditorItem) {
@@ -240,12 +253,14 @@ struct RuleEditorSheet: View {
             _conditions = State(initialValue: [])
             _isEnabled = State(initialValue: true)
             _subfolderPattern = State(initialValue: .none)
+            _scope = State(initialValue: .allWatchFolders)
         case .edit(let rule):
             _folderName = State(initialValue: rule.folderName)
             _extensionsText = State(initialValue: rule.extensionsDisplay)
             _conditions = State(initialValue: rule.conditions)
             _isEnabled = State(initialValue: rule.isEnabled)
             _subfolderPattern = State(initialValue: rule.subfolderPattern)
+            _scope = State(initialValue: rule.scope)
         }
     }
 
@@ -269,6 +284,9 @@ struct RuleEditorSheet: View {
                         .foregroundStyle(IntakeColor.danger)
                 }
                 conditionsSection
+                if model.hasMultipleWatchFolders || !scope.isAll {
+                    scopeSection
+                }
             }
             .formStyle(.grouped)
             .navigationTitle(title)
@@ -315,6 +333,46 @@ struct RuleEditorSheet: View {
         }
     }
 
+    /// Applies to: all watch folders (default) or specific ones.
+    @ViewBuilder
+    private var scopeSection: some View {
+        Section {
+            Picker("Watch folders", selection: Binding(
+                get: { scope.isAll },
+                set: { isAll in
+                    if isAll {
+                        scope = .allWatchFolders
+                    } else if scope.isAll {
+                        scope = .watchFolders(Set(model.watchFolderProfiles.prefix(1).map(\.id)))
+                    }
+                }
+            )) {
+                Text("All watch folders").tag(true)
+                Text("Specific folders").tag(false)
+            }
+            if case .watchFolders(let ids) = scope {
+                ForEach(model.watchFolderProfiles) { profile in
+                    Toggle(profile.displayName, isOn: Binding(
+                        get: { ids.contains(profile.id) },
+                        set: { included in
+                            var next = ids
+                            if included {
+                                next.insert(profile.id)
+                            } else {
+                                next.remove(profile.id)
+                            }
+                            scope = .watchFolders(next)
+                        }
+                    ))
+                }
+            }
+        } header: {
+            Text("Applies to")
+        } footer: {
+            Text("A rule scoped to specific folders is skipped everywhere else, so screenshot rules never touch Downloads.")
+        }
+    }
+
     private var sourceDomainHint: String {
         model.recentSourceDomains.first ?? "bank.com"
     }
@@ -352,6 +410,10 @@ struct RuleEditorSheet: View {
                     errorMessage = "Add at least one extension or condition."
                     return
                 }
+                if case .watchFolders(let ids) = scope, ids.isEmpty {
+                    errorMessage = "Choose at least one watch folder."
+                    return
+                }
                 let id: String? = {
                     if case .edit(let rule) = item { return rule.id }
                     return nil
@@ -362,7 +424,8 @@ struct RuleEditorSheet: View {
                     extensions: tokens,
                     conditions: conditions,
                     isEnabled: isEnabled,
-                    subfolderPattern: subfolderPattern
+                    subfolderPattern: subfolderPattern,
+                    scope: scope
                 )
                 dismiss()
             }

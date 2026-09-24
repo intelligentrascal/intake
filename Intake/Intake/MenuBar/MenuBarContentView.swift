@@ -32,10 +32,7 @@ struct MenuBarContentView: View {
         Button(model.isPaused ? "Resume Organizing" : "Pause Organizing") {
             model.togglePaused()
         }
-        Button(OrganizeExistingCopy.menuTitle) {
-            model.requestOrganizeExisting()
-        }
-        .disabled(model.isOrganizingExisting || model.watchFolderBookmarkLost)
+        OrganizeExistingMenu()
         if !model.recentActivity.isEmpty {
             Divider()
             ForEach(model.recentActivity) { entry in
@@ -63,5 +60,35 @@ struct MenuBarContentView: View {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+}
+
+/// Organize Existing… — a plain button with one watch folder, a menu of
+/// "All Watch Folders" plus each folder with several.
+struct OrganizeExistingMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Group {
+            if model.hasMultipleWatchFolders {
+                Menu(OrganizeExistingCopy.menuTitle) {
+                    Button("All Watch Folders") {
+                        model.requestOrganizeExisting()
+                    }
+                    Divider()
+                    ForEach(model.watchFolderControllers, id: \.profileID) { controller in
+                        Button(controller.displayName) {
+                            model.requestOrganizeExisting(profileID: controller.profileID)
+                        }
+                        .disabled(controller.accessLost)
+                    }
+                }
+            } else {
+                Button(OrganizeExistingCopy.menuTitle) {
+                    model.requestOrganizeExisting()
+                }
+            }
+        }
+        .disabled(model.isOrganizeExistingDisabled)
     }
 }

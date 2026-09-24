@@ -8,40 +8,53 @@ import IntakeCore
 @Observable
 @MainActor
 final class AppModel {
-    var automaticOrganizing: Bool {
-        didSet { AutomaticOrganizingPreference.persist(automaticOrganizing, to: .standard) }
+    /// Ordered watch folders with their per-folder settings. Profile #1 is the
+    /// migrated 1.2 watch folder.
+    var watchFolderProfiles: [WatchFolderProfile] {
+        didSet { WatchFolderProfileStore.save(watchFolderProfiles, to: .standard) }
     }
 
-    var organizingWait: OrganizingWait {
-        didSet {
-            OrganizingWait.persist(organizingWait, to: .standard)
-            reevaluateWaitingForAge()
-        }
+    /// One live-ingest controller per profile, in profile order.
+    private(set) var watchFolderControllers: [WatchFolderController] = []
+    /// Why the last add / change of a watch folder was refused.
+    var watchFolderAlertMessage: String?
+    /// Activity folder filter; `nil` shows every folder.
+    var activityFolderFilter: String?
+    /// Cleanup folder scope; `nil` scans every folder.
+    var cleanupFolderScope: String? {
+        didSet { scanCleanupCandidates() }
     }
 
-    var renameWhenDownloadFinishes: Bool {
-        didSet {
-            RenameWhenDownloadFinishesPreference.persist(renameWhenDownloadFinishes, to: .standard)
-        }
+    var watchFolderStatus: WatchFolderStatus {
+        WatchFolderStatus.summarize(
+            watchFolderControllers.map { controller in
+                let profile = controller.profile
+                return WatchFolderStatus.Folder(
+                    displayName: profile.displayName,
+                    isOrganizing: profile.isOrganizing,
+                    accessLost: controller.accessLost
+                )
+            }
+        )
     }
 
     var isPaused: Bool {
-        !automaticOrganizing
+        watchFolderStatus.isPaused
     }
 
-    var watchFolder: URL {
-        didSet {
-            arrivedWhilePaused.removeAll()
-            waitingForAge.removeAll()
-            ageGateTask?.cancel()
-            ageGateHeartbeatTask?.cancel()
-            ageGateHeartbeatTask = nil
-            WaitingForAgeStore.clear(in: .standard)
-            persistWatchFolderBookmark()
-        }
+    var hasMultipleWatchFolders: Bool {
+        watchFolderProfiles.count > 1
     }
 
-    var watchFolderBookmarkLost: Bool
+    var canAddWatchFolder: Bool {
+        watchFolderProfiles.count < WatchFolderProfile.softCap
+    }
+
+    /// Organize Existing needs at least one folder Intake can still see.
+    var isOrganizeExistingDisabled: Bool {
+        isOrganizingExisting || watchFolderControllers.allSatisfy(\.accessLost)
+    }
+
     var rules: [RoutingRule] {
         didSet { persistRules() }
     }
@@ -141,6 +154,8 @@ final class AppModel {
     var organizePreview: OrganizeExistingPreview?
     /// Source URLs the user excluded in the preview (single files or whole groups).
     var organizeExcludedURLs: Set<URL> = []
+    /// The watch folder the current Organize Existing run targets; `nil` = all.
+    var organizeTargetProfileID: String?
     var snoozedUntil: [String: Date] {
         didSet { persistSnooze() }
     }
@@ -149,45 +164,26 @@ final class AppModel {
         Array(activity.prefix(5))
     }
 
+    /// Activity narrowed by the folder filter (older rows count as profile #1).
+    var filteredActivity: [ActivityEntry] {
+        ActivityLog.filtered(activity, watchFolderID: activityFolderFilter)
+    }
+
     var statusTitle: String {
-        if watchFolderBookmarkLost {
-            return "Attention"
-        }
-        return isPaused ? "Paused" : "Watching"
+        watchFolderStatus.title
     }
 
     var statusSubtitle: String {
-        if watchFolderBookmarkLost {
-            return "Needs folder access"
-        }
-        let folder = watchFolder.lastPathComponent
-        if isPaused {
-            return "Organizing is paused · \(folder)"
-        }
-        return "New files in \(folder)"
+        watchFolderStatus.subtitle
     }
 
     var menuBarAccessibilityLabel: String {
-        if watchFolderBookmarkLost {
-            return "Intake needs folder access"
-        }
-        return isPaused ? "Intake paused" : "Intake watching"
+        watchFolderStatus.accessibilityLabel
     }
 
+    /// Cleanup candidate → the watch folder it was found in.
     @ObservationIgnored
-    private var watcher = DownloadsFolderWatcher()
-    @ObservationIgnored
-    private var accessingWatchFolder = false
-    @ObservationIgnored
-    private var arrivedWhilePaused: [URL] = []
-    @ObservationIgnored
-    private var waitingForAge: [PendingStableFile] = []
-    @ObservationIgnored
-    private var ageGateTask: Task<Void, Never>?
-    @ObservationIgnored
-    private var ageGateHeartbeatTask: Task<Void, Never>?
-    @ObservationIgnored
-    private var arrivedDuringOrganize: [URL] = []
+    private var cleanupProfileByURL: [URL: String] = [:]
     @ObservationIgnored
     private var organizeCancelRequested = false
     @ObservationIgnored
@@ -197,16 +193,13 @@ final class AppModel {
 
     init() {
         let defaults = UserDefaults.standard
-        // Load into locals first — do not read `self` until every stored property is set
-        // (Swift 6 / @Observable rejects self.automaticOrganizing before organizingWait init).
-        let autoEnabled = AutomaticOrganizingPreference.isEnabled(in: defaults)
-        let waitPreference = OrganizingWait.load(from: defaults)
-        let renameOnFinish = RenameWhenDownloadFinishesPreference.isEnabled(in: defaults)
-        organizingWait = waitPreference
-        automaticOrganizing = autoEnabled
-        renameWhenDownloadFinishes = renameOnFinish
-        AutomaticOrganizingPreference.persist(autoEnabled, to: defaults)
-        RenameWhenDownloadFinishesPreference.persist(renameOnFinish, to: defaults)
+        // Do not read `self` until every stored property is set (Swift 6 / @Observable).
+        // First launch after 1.2 migrates the single watch folder, its Rename / Wait /
+        // Automatic organizing settings and its Wait queue into profile #1.
+        watchFolderProfiles = WatchFolderProfileStore.load(
+            from: defaults,
+            legacyFolder: Self.resolveLegacyWatchFolder
+        )
         cleanupThresholdDays = defaults.object(forKey: SettingsKey.cleanupDays) as? Int ?? 30
         includeWatchRootInCleanup = defaults.object(forKey: SettingsKey.includeRoot) as? Bool ?? true
         aiSuggestionsEnabled = defaults.bool(forKey: SettingsKey.aiSuggestions)
@@ -232,11 +225,10 @@ final class AppModel {
         snoozedUntil = Self.loadSnooze()
         cleanupCandidates = []
         launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
-        let resolved = Self.resolveWatchFolder()
-        watchFolder = resolved.url
-        watchFolderBookmarkLost = resolved.lost
-        startAccessingWatchFolder()
-        restartWatcher()
+        watchFolderControllers = watchFolderProfiles.map {
+            WatchFolderController(profile: $0, model: self)
+        }
+        watchFolderControllers.forEach { $0.start() }
         refreshSuggestions()
     }
 
@@ -274,34 +266,205 @@ final class AppModel {
         setPaused(!isPaused)
     }
 
-    func setAutomaticOrganizing(_ enabled: Bool) {
-        setPaused(!enabled)
-    }
-
-    func setOrganizingWait(_ wait: OrganizingWait) {
-        organizingWait = wait
-    }
-
-    func setRenameWhenDownloadFinishes(_ enabled: Bool) {
-        renameWhenDownloadFinishes = enabled
-    }
-
+    /// Menu bar / Activity Pause and Resume act on every watch folder. Resume
+    /// also turns Automatic organizing back on when nothing would be organizing
+    /// otherwise — with one folder this is exactly 1.2's Pause / Resume.
     func setPaused(_ paused: Bool) {
-        let wasPaused = isPaused
-        automaticOrganizing = !paused
         if paused {
-            ageGateTask?.cancel()
-            ageGateHeartbeatTask?.cancel()
-            ageGateHeartbeatTask = nil
+            for id in watchFolderProfiles.map(\.id) {
+                updateProfile(id) { $0.isPaused = true }
+            }
             return
         }
-        if wasPaused {
-            let pending = arrivedWhilePaused
-            arrivedWhilePaused.removeAll()
-            let now = Date()
-            pending.forEach { rememberStable($0, stableAt: now) }
-            reevaluateWaitingForAge()
+        for id in watchFolderProfiles.map(\.id) {
+            updateProfile(id) { $0.isPaused = false }
         }
+        if !watchFolderProfiles.contains(where: \.isOrganizing) {
+            for id in watchFolderProfiles.map(\.id) {
+                updateProfile(id) { $0.automaticOrganizing = true }
+            }
+        }
+    }
+
+    // MARK: Watch folders
+
+    func watchFolderProfile(id: String) -> WatchFolderProfile? {
+        watchFolderProfiles.first { $0.id == id }
+    }
+
+    func watchFolderController(id: String) -> WatchFolderController? {
+        watchFolderControllers.first { $0.profileID == id }
+    }
+
+    /// The controller whose folder holds `url` (deepest match wins).
+    func watchFolderController(containing url: URL) -> WatchFolderController? {
+        watchFolderControllers
+            .filter { $0.contains(url) }
+            .max { $0.folder.path.count < $1.folder.path.count }
+    }
+
+    func watchFolderName(id: String) -> String? {
+        watchFolderProfile(id: id)?.displayName
+    }
+
+    /// The global rule list narrowed to one watch folder's scope.
+    func rules(forWatchFolder id: String) -> [RoutingRule] {
+        RoutingRule.scoped(rules, toWatchFolder: id)
+    }
+
+    /// Settings toggle: shows whether the folder is organizing, so Pause from
+    /// the menu bar reads as off here too. Turning it on also clears Pause.
+    func setAutomaticOrganizing(_ enabled: Bool, for id: String) {
+        updateProfile(id) { profile in
+            profile.automaticOrganizing = enabled
+            if enabled {
+                profile.isPaused = false
+            }
+        }
+    }
+
+    func setOrganizingWait(_ wait: OrganizingWait, for id: String) {
+        updateProfile(id) { $0.organizingWait = wait }
+    }
+
+    func setRenameWhenDownloadFinishes(_ enabled: Bool, for id: String) {
+        updateProfile(id) { $0.renameWhenDownloadFinishes = enabled }
+    }
+
+    func setWatchFolderPaused(_ paused: Bool, for id: String) {
+        updateProfile(id) { $0.isPaused = paused }
+    }
+
+    func renameWatchFolder(id: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        updateProfile(id) { $0.displayName = trimmed }
+    }
+
+    /// Where macOS saves screenshots (or the Desktop), offered as a one-click
+    /// watch folder. `nil` when it's already watched or can't be added.
+    var screenshotFolderSuggestion: URL? {
+        let stored = CFPreferencesCopyAppValue(
+            ScreenshotLocation.locationKey as CFString,
+            ScreenshotLocation.defaultsDomain as CFString
+        ) as? String
+        let url = ScreenshotLocation.resolve(storedLocation: stored, homeDirectory: Self.userHomeDirectory)
+        guard canAddWatchFolder,
+              WatchFolderValidation.validate(url, existing: validationFolders()) == nil
+        else {
+            return nil
+        }
+        return url
+    }
+
+    /// Adds a watch folder. The folder picker opens at `suggestion` (e.g. the
+    /// screenshot location) — sandbox access is still granted by the picker.
+    func addWatchFolder(startingAt suggestion: URL? = nil) {
+        guard canAddWatchFolder else {
+            watchFolderAlertMessage = WatchFolderValidation.Problem
+                .limitReached(WatchFolderProfile.softCap).message
+            return
+        }
+        let start = suggestion ?? Self.userHomeDirectory
+        guard let url = WatchFolderPicker.present(startingAt: start) else { return }
+        if let problem = WatchFolderValidation.validate(url, existing: validationFolders()) {
+            watchFolderAlertMessage = problem.message
+            return
+        }
+        let profile = WatchFolderProfile(
+            displayName: FileManager.default.displayName(atPath: url.path),
+            path: url.path,
+            bookmark: WatchFolderController.bookmark(for: url)
+        )
+        watchFolderProfiles.append(profile)
+        let controller = WatchFolderController(profile: profile, model: self)
+        watchFolderControllers.append(controller)
+        controller.start()
+        refreshSuggestions()
+        scanCleanupCandidates()
+    }
+
+    /// Change… or Grant Access… for one folder. Re-granting the same folder
+    /// keeps its Wait queue; a different folder starts fresh.
+    func changeWatchFolder(id: String) {
+        guard let controller = watchFolderController(id: id) else { return }
+        guard let url = WatchFolderPicker.present(startingAt: controller.folder) else { return }
+        if let problem = WatchFolderValidation.validate(
+            url,
+            existing: validationFolders(),
+            replacing: id
+        ) {
+            watchFolderAlertMessage = problem.message
+            return
+        }
+        let oldName = controller.folder.lastPathComponent
+        updateProfile(id) { profile in
+            if profile.displayName == oldName {
+                profile.displayName = FileManager.default.displayName(atPath: url.path)
+            }
+            profile.path = url.standardizedFileURL.path
+            profile.bookmark = WatchFolderController.bookmark(for: url)
+        }
+        controller.replaceFolder(with: url)
+        refreshSuggestions()
+        scanCleanupCandidates()
+    }
+
+    /// Removes one watch folder; the others keep running. The last folder
+    /// can't be removed. Rules scoped only to it are disabled, not widened.
+    func removeWatchFolder(id: String) {
+        guard hasMultipleWatchFolders,
+              let index = watchFolderControllers.firstIndex(where: { $0.profileID == id })
+        else {
+            return
+        }
+        watchFolderControllers[index].discard()
+        watchFolderControllers.remove(at: index)
+        watchFolderProfiles.removeAll { $0.id == id }
+        rules = RuleMutation.removingWatchFolder(id, from: rules)
+        if activityFolderFilter == id {
+            activityFolderFilter = nil
+        }
+        if cleanupFolderScope == id {
+            cleanupFolderScope = nil
+        } else {
+            scanCleanupCandidates()
+        }
+        refreshSuggestions()
+    }
+
+    func revealWatchFolder(id: String) {
+        guard let controller = watchFolderController(id: id) else { return }
+        NSWorkspace.shared.open(controller.folder)
+    }
+
+    private func updateProfile(_ id: String, _ mutate: (inout WatchFolderProfile) -> Void) {
+        guard let index = watchFolderProfiles.firstIndex(where: { $0.id == id }) else { return }
+        let old = watchFolderProfiles[index]
+        var updated = old
+        mutate(&updated)
+        guard updated != old else { return }
+        watchFolderProfiles[index] = updated
+        watchFolderController(id: id)?.profileDidChange(from: old)
+    }
+
+    private func validationFolders() -> [WatchFolderValidation.ExistingFolder] {
+        watchFolderControllers.map { controller in
+            WatchFolderValidation.ExistingFolder(
+                id: controller.profileID,
+                displayName: controller.displayName,
+                url: controller.folder,
+                managedFolderNames: controller.managedFolderNames
+            )
+        }
+    }
+
+    /// The real home folder, not the sandbox container.
+    private static var userHomeDirectory: URL {
+        if let entry = getpwuid(getuid()), let dir = entry.pointee.pw_dir {
+            return URL(fileURLWithPath: String(cString: dir), isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
     }
 
     func setShowsInDock(_ show: Bool) {
@@ -430,11 +593,42 @@ final class AppModel {
     }
 
     var organizeConfirmTitle: String {
-        OrganizeExistingCopy.confirmTitle(folderName: watchFolder.lastPathComponent)
+        if let name = organizeTargetName {
+            return OrganizeExistingCopy.confirmTitle(folderName: name)
+        }
+        return OrganizeExistingCopy.confirmTitleAllFolders
+    }
+
+    /// The single folder Organize Existing targets, or `nil` for several.
+    var organizeTargetName: String? {
+        if let id = organizeTargetProfileID {
+            return watchFolderName(id: id)
+        }
+        return hasMultipleWatchFolders ? nil : watchFolderProfiles.first?.displayName
     }
 
     var organizePausedNote: String? {
-        isPaused ? OrganizeExistingCopy.pausedOneShotNote : nil
+        let targets = organizeTargets(for: organizeTargetProfileID)
+        return targets.contains(where: { !$0.profile.isOrganizing })
+            ? OrganizeExistingCopy.pausedOneShotNote
+            : nil
+    }
+
+    /// Group header in the preview; names the watch folder when the preview
+    /// spans more than one.
+    func organizeGroupTitle(_ group: OrganizePreviewGroup) -> String {
+        guard organizeTargetProfileID == nil, hasMultipleWatchFolders,
+              let controller = watchFolderController(containing: group.destinationDirectory)
+        else {
+            return group.destinationFolderName
+        }
+        return "\(controller.displayName) › \(group.destinationFolderName)"
+    }
+
+    private func organizeTargets(for profileID: String?) -> [WatchFolderController] {
+        let candidates = profileID.flatMap { id in watchFolderController(id: id).map { [$0] } }
+            ?? watchFolderControllers
+        return candidates.filter { !$0.accessLost }
     }
 
     /// Files still selected in the preview (not excluded), in group order.
@@ -469,15 +663,24 @@ final class AppModel {
         }
     }
 
-    func requestOrganizeExisting() {
+    /// Organize Existing for one watch folder, or every folder when `profileID`
+    /// is `nil`. Each folder is scanned and previewed with its own scoped rules.
+    func requestOrganizeExisting(profileID: String? = nil) {
         if isOrganizingExisting {
             organizeProgressPresented = true
             openActivity()
             return
         }
-        let scan = OrganizeExistingScanner(watchFolder: watchFolder).scan()
-        let pipeline = IngestPipeline(watchFolder: watchFolder, rules: rules)
-        let preview = OrganizeExistingPreviewBuilder.build(scan: scan, pipeline: pipeline)
+        organizeTargetProfileID = profileID
+        var groups: [OrganizePreviewGroup] = []
+        var skipped: [OrganizeExistingSkip] = []
+        for controller in organizeTargets(for: profileID) {
+            let scan = OrganizeExistingScanner(watchFolder: controller.folder).scan()
+            let preview = OrganizeExistingPreviewBuilder.build(scan: scan, pipeline: controller.pipeline)
+            groups.append(contentsOf: preview.groups)
+            skipped.append(contentsOf: preview.skipped)
+        }
+        let preview = OrganizeExistingPreview(groups: groups, skipped: skipped)
         organizePreview = preview
         organizeExcludedURLs = []
         openActivity()
@@ -519,14 +722,20 @@ final class AppModel {
         organizeEligibleTotal = selectedItems.count
         organizeProcessedCount = 0
         organizeProgressPresented = true
-        let processor = OrganizeExistingProcessor(
-            watchFolder: watchFolder,
-            rules: rules,
-            ignorePolicy: ignorePolicy
-        )
-        let eligibleSet = Set(selectedItems.map { $0.plan.sourceURL.standardizedFileURL })
-        waitingForAge.removeAll { eligibleSet.contains($0.url) }
-        persistWaitingForAge()
+        // Each item is applied by the folder it sits in, with that folder's rules.
+        let batches: [(controller: WatchFolderController, items: [OrganizePreviewItem])] =
+            watchFolderControllers.compactMap { controller in
+                let items = selectedItems.filter {
+                    $0.plan.sourceURL.deletingLastPathComponent().standardizedFileURL.path
+                        == controller.folder.standardizedFileURL.path
+                }
+                return items.isEmpty ? nil : (controller, items)
+            }
+        for batch in batches {
+            batch.controller.removeFromWaitingQueue(
+                Set(batch.items.map { $0.plan.sourceURL.standardizedFileURL })
+            )
+        }
 
         organizeTask = Task { @MainActor in
             for skip in preScanned where !skip.url.lastPathComponent.hasPrefix(".") {
@@ -536,37 +745,50 @@ final class AppModel {
                         detail: "Skipped \(skip.url.lastPathComponent) — \(skip.reason.reasonText.lowercased())",
                         url: skip.url,
                         fileName: skip.url.lastPathComponent
-                    )
+                    ),
+                    watchFolderID: self.watchFolderController(containing: skip.url)?.profileID
                 )
             }
 
-            let result = processor.applyPreview(
-                items: selectedItems,
-                alreadySkipped: preScanned.count,
-                isCancelled: { Task.isCancelled || self.organizeCancelRequested },
-                onProgress: { processed, _ in
-                    self.organizeProcessedCount = processed
-                },
-                onFileResult: { fileResult in
-                    switch fileResult {
-                    case .organized(let entries):
-                        self.recordOrganized(entries)
-                    case .skipped(let entry), .error(let entry):
-                        self.record(entry)
-                    case .notInWatchRoot:
-                        break
+            var summary = OrganizeExistingSummary(organized: 0, skipped: preScanned.count, errors: 0)
+            var processedBefore = 0
+            for batch in batches {
+                let id = batch.controller.profileID
+                let result = batch.controller.processor.applyPreview(
+                    items: batch.items,
+                    isCancelled: { Task.isCancelled || self.organizeCancelRequested },
+                    onProgress: { processed, _ in
+                        self.organizeProcessedCount = processedBefore + processed
+                    },
+                    onFileResult: { fileResult in
+                        switch fileResult {
+                        case .organized(let entries):
+                            self.recordOrganized(entries, watchFolderID: id)
+                        case .skipped(let entry), .error(let entry):
+                            self.record(entry, watchFolderID: id)
+                        case .notInWatchRoot:
+                            break
+                        }
                     }
+                )
+                processedBefore += batch.items.count
+                summary.organized += result.summary.organized
+                summary.skipped += result.summary.skipped
+                summary.errors += result.summary.errors
+                if result.summary.cancelled {
+                    summary.cancelled = true
+                    break
                 }
-            )
+            }
 
-            self.organizeSummary = result.summary
+            self.organizeSummary = summary
             self.isOrganizingExisting = false
             self.organizeProgressPresented = false
             self.organizeDonePresented = true
             self.organizePreview = nil
             self.organizeExcludedURLs = []
             self.scanCleanupCandidates()
-            self.flushArrivedDuringOrganize()
+            self.watchFolderControllers.forEach { $0.flushArrivedDuringOrganize() }
         }
     }
 
@@ -613,20 +835,6 @@ final class AppModel {
         UserDefaults.standard.set(true, forKey: SettingsKey.didShowMenuBarTip)
     }
 
-    func chooseWatchFolder() {
-        guard let url = WatchFolderPicker.present(startingAt: watchFolder) else { return }
-        stopAccessingWatchFolder()
-        watchFolderBookmarkLost = false
-        watchFolder = url
-        startAccessingWatchFolder()
-        restartWatcher()
-        scanCleanupCandidates()
-    }
-
-    func revealWatchFolder() {
-        NSWorkspace.shared.open(watchFolder)
-    }
-
     func reveal(_ url: URL?) {
         guard let url else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -659,7 +867,8 @@ final class AppModel {
         extensions: Set<String>,
         conditions: [RuleCondition] = [],
         isEnabled: Bool,
-        subfolderPattern: SubfolderPattern = .none
+        subfolderPattern: SubfolderPattern = .none,
+        scope: RuleScope = .allWatchFolders
     ) {
         if let id {
             rules = RuleMutation.updating(
@@ -669,7 +878,8 @@ final class AppModel {
                 extensions: extensions,
                 conditions: conditions,
                 isEnabled: isEnabled,
-                subfolderPattern: subfolderPattern
+                subfolderPattern: subfolderPattern,
+                scope: scope
             )
         } else {
             rules = RuleMutation.addingCustom(
@@ -678,7 +888,8 @@ final class AppModel {
                 extensions: extensions,
                 conditions: conditions,
                 isEnabled: isEnabled,
-                subfolderPattern: subfolderPattern
+                subfolderPattern: subfolderPattern,
+                scope: scope
             )
         }
     }
@@ -715,10 +926,14 @@ final class AppModel {
     }
 
     func refreshSuggestions() {
-        let histogram = WatchRootHistogram.counts(
-            watchFolder: watchFolder,
-            ignorePolicy: ignorePolicy
-        )
+        var histogram: [String: Int] = [:]
+        for controller in watchFolderControllers {
+            let counts = WatchRootHistogram.counts(
+                watchFolder: controller.folder,
+                ignorePolicy: controller.ignorePolicy
+            )
+            histogram.merge(counts, uniquingKeysWith: +)
+        }
         ruleSuggestions = RuleSuggestionEngine.suggestions(
             activity: activity,
             watchRootHistogram: histogram,
@@ -746,14 +961,6 @@ final class AppModel {
             if result.count >= 5 { break }
         }
         return result
-    }
-
-    var managedFolderNames: Set<String> {
-        DefaultTaxonomy.managedFolderNames(from: rules)
-    }
-
-    var ignorePolicy: DownloadIgnorePolicy {
-        DownloadIgnorePolicy(managedFolderNames: managedFolderNames)
     }
 
     var openRouterConfiguration: OpenRouterConfiguration {
@@ -808,192 +1015,7 @@ final class AppModel {
         }
     }
 
-    func handleStableFile(_ reportedURL: URL, stableAt: Date = Date()) {
-        if isOrganizingExisting {
-            arrivedDuringOrganize.append(reportedURL)
-            return
-        }
-        // A repeated or late stable event can name a file that was already renamed
-        // or moved. Skip it instead of logging a second row for the same file, and
-        // use the spelling on disk so one file never queues under two names.
-        guard FileManager.default.fileExists(atPath: reportedURL.path) else { return }
-        let url = FileIdentity.onDiskURL(for: reportedURL)
-        let current = applyRenameOnStableIfNeeded(url)
-        rememberStable(current, stableAt: stableAt)
-        if isPaused {
-            arrivedWhilePaused.removeAll { $0.standardizedFileURL == current.standardizedFileURL }
-            arrivedWhilePaused.append(current)
-            return
-        }
-        reevaluateWaitingForAge()
-    }
-
-    private var liveIngestPolicy: LiveIngestPolicy {
-        LiveIngestPolicy(
-            renameWhenDownloadFinishes: renameWhenDownloadFinishes,
-            automaticOrganizing: automaticOrganizing
-        )
-    }
-
-    private func applyRenameOnStableIfNeeded(_ url: URL) -> URL {
-        guard liveIngestPolicy.shouldRenameOnStable else { return url }
-        let processor = OrganizeExistingProcessor(
-            watchFolder: watchFolder,
-            rules: rules,
-            ignorePolicy: ignorePolicy
-        )
-        switch processor.processOne(url, mode: .renameInPlace) {
-        case .organized(let entries):
-            recordOrganized(entries)
-            let current = entries.last?.url ?? url
-            // Prevent the watcher from treating the renamed root name as a new download.
-            watcher.acknowledgeRootFile(named: current.lastPathComponent)
-            if current.standardizedFileURL != url.standardizedFileURL {
-                watcher.acknowledgeRootFile(named: url.lastPathComponent)
-            }
-            return current
-        case .skipped(let entry):
-            record(entry)
-            return url
-        case .error(let entry):
-            record(entry)
-            return url
-        case .notInWatchRoot:
-            return url
-        }
-    }
-
-    private func rememberStable(_ url: URL, stableAt: Date) {
-        let standardized = url.standardizedFileURL
-        if waitingForAge.contains(where: { $0.url == standardized }) {
-            return
-        }
-        waitingForAge.append(PendingStableFile(url: standardized, stableAt: stableAt))
-        persistWaitingForAge()
-    }
-
-    private func reevaluateWaitingForAge() {
-        ageGateTask?.cancel()
-        ageGateTask = nil
-        guard automaticOrganizing else {
-            ensureAgeGateHeartbeat()
-            return
-        }
-
-        let partitioned = FileAgeGate.partition(
-            pending: waitingForAge,
-            wait: organizingWait
-        )
-        waitingForAge = partitioned.waiting
-        var deferred: [PendingStableFile] = []
-        for item in partitioned.ready {
-            // Belt-and-suspenders: never route before Wait even if partition misfires.
-            guard liveIngestPolicy.shouldRoute(
-                stableAt: item.stableAt,
-                wait: organizingWait
-            ) else {
-                deferred.append(item)
-                continue
-            }
-            if !applyIngest(item.url, stableAt: item.stableAt) {
-                // Empty / still-writing — keep waiting with original stableAt.
-                deferred.append(item)
-            }
-        }
-        waitingForAge.append(contentsOf: deferred)
-        persistWaitingForAge()
-        ensureAgeGateHeartbeat()
-
-        guard let next = waitingForAge.min(by: { $0.stableAt < $1.stableAt }) else { return }
-        let delay = FileAgeGate.delayUntilEligible(stableAt: next.stableAt, wait: organizingWait)
-        ageGateTask = Task { @MainActor in
-            let nanoseconds = UInt64(max(delay, 0.05) * 1_000_000_000)
-            try? await Task.sleep(nanoseconds: nanoseconds)
-            guard !Task.isCancelled else { return }
-            self.reevaluateWaitingForAge()
-        }
-    }
-
-    /// Defensive 30s heartbeat so eligibility is not missed if the sleep Task is cancelled/lost.
-    private func ensureAgeGateHeartbeat() {
-        guard automaticOrganizing, !waitingForAge.isEmpty else {
-            ageGateHeartbeatTask?.cancel()
-            ageGateHeartbeatTask = nil
-            return
-        }
-        guard ageGateHeartbeatTask == nil else { return }
-        ageGateHeartbeatTask = Task { @MainActor in
-            defer { self.ageGateHeartbeatTask = nil }
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
-                guard !Task.isCancelled else { return }
-                guard self.automaticOrganizing, !self.waitingForAge.isEmpty else { return }
-                self.reevaluateWaitingForAge()
-            }
-        }
-    }
-
-    private func persistWaitingForAge() {
-        WaitingForAgeStore.save(waitingForAge, to: .standard)
-    }
-
-    /// Restore persisted Wait-queue entries after the watcher seeds `knownNames`.
-    /// Acknowledge those root names so rename/watch does not double-ingest, but keep them in `waitingForAge`.
-    private func restoreWaitingForAgeFromDisk() {
-        let restored = WaitingForAgeStore.restoreExisting(
-            from: .standard,
-            watchRoot: watchFolder
-        )
-        guard !restored.isEmpty else {
-            // Drop stale paths that no longer exist under this root.
-            if WaitingForAgeStore.load(from: .standard).isEmpty == false {
-                WaitingForAgeStore.save(waitingForAge, to: .standard)
-            }
-            return
-        }
-        for item in restored {
-            if !waitingForAge.contains(where: { $0.url == item.url }) {
-                waitingForAge.append(item)
-            }
-            watcher.acknowledgeRootFile(named: item.url.lastPathComponent)
-        }
-        persistWaitingForAge()
-        reevaluateWaitingForAge()
-    }
-
-    /// Returns `false` when the file should stay queued (missing, empty, or not routed yet).
-    @discardableResult
-    private func applyIngest(_ url: URL, stableAt: Date? = nil) -> Bool {
-        guard FileManager.default.fileExists(atPath: url.path) else { return true }
-        if !DownloadWriteGate.allowsOrganizeOrRename(at: url) {
-            return false
-        }
-        let processor = OrganizeExistingProcessor(
-            watchFolder: watchFolder,
-            rules: rules,
-            ignorePolicy: ignorePolicy
-        )
-        switch processor.processOne(url, mode: liveIngestPolicy.applyModeAfterWait, stableAt: stableAt) {
-        case .organized(let entries):
-            if entries.isEmpty {
-                // routeOnly refused (e.g. empty) — keep queued.
-                return false
-            }
-            recordOrganized(entries)
-            requestOpenRouterIfNeeded(entries: entries)
-            return true
-        case .skipped(let entry):
-            record(entry)
-            return true
-        case .error(let entry):
-            record(entry)
-            return true
-        case .notInWatchRoot:
-            return true
-        }
-    }
-
-    private func requestOpenRouterIfNeeded(entries: [ActivityEntry]) {
+    func requestOpenRouterIfNeeded(entries: [ActivityEntry]) {
         guard aiSuggestionsEnabled, openRouterEnabled else { return }
         guard let moved = entries.first(where: {
             $0.kind == .moved && $0.destinationFolder == FileCategory.other.folderName
@@ -1043,8 +1065,12 @@ final class AppModel {
 
     private func refile(_ url: URL, toFolder folderName: String) {
         let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: url.path) else { return }
-        let destDir = watchFolder.appendingPathComponent(folderName, isDirectory: true)
+        guard fileManager.fileExists(atPath: url.path),
+              let controller = watchFolderController(containing: url)
+        else {
+            return
+        }
+        let destDir = controller.folder.appendingPathComponent(folderName, isDirectory: true)
         do {
             try fileManager.createDirectory(at: destDir, withIntermediateDirectories: true)
             let existing = Set((try? fileManager.contentsOfDirectory(atPath: destDir.path)) ?? [])
@@ -1060,9 +1086,10 @@ final class AppModel {
                     destinationFolder: folderName,
                     beforePath: url.path,
                     afterPath: destination.path
-                )
+                ),
+                watchFolderID: controller.profileID
             )
-            pruneEmptyManagedFolders()
+            controller.pruneEmptyManagedFolders()
         } catch {
             record(
                 ActivityEntry(
@@ -1070,31 +1097,39 @@ final class AppModel {
                     detail: "Could not file \(url.lastPathComponent): \(error.localizedDescription)",
                     url: url,
                     fileName: url.lastPathComponent
-                )
+                ),
+                watchFolderID: controller.profileID
             )
         }
     }
 
-    private func flushArrivedDuringOrganize() {
-        let pending = arrivedDuringOrganize
-        arrivedDuringOrganize.removeAll()
-        for url in pending {
-            handleStableFile(url)
-        }
-    }
-
+    /// Scans the Cleanup scope (one watch folder or all), each folder with its
+    /// own category folders.
     func scanCleanupCandidates() {
-        cleanupCandidates = CleanupScanner(
-            watchFolder: watchFolder,
-            thresholdDays: cleanupThresholdDays,
-            includeWatchRoot: includeWatchRootInCleanup,
-            snoozedUntil: snoozedUntil,
-            ignorePolicy: ignorePolicy,
-            managedFolderNames: managedFolderNames,
-            hashCache: cleanupHashCache,
-            mountedVolumeURLs: mountedVolumeURLs(),
-            packageReceiptResolver: cleanupPackageReceiptResolver
-        ).candidates()
+        let targets = cleanupFolderScope.flatMap { id in watchFolderController(id: id).map { [$0] } }
+            ?? watchFolderControllers
+        let mounted = mountedVolumeURLs()
+        var found: [CleanupCandidate] = []
+        var owners: [URL: String] = [:]
+        for controller in targets where !controller.accessLost {
+            let candidates = CleanupScanner(
+                watchFolder: controller.folder,
+                thresholdDays: cleanupThresholdDays,
+                includeWatchRoot: includeWatchRootInCleanup,
+                snoozedUntil: snoozedUntil,
+                ignorePolicy: controller.ignorePolicy,
+                managedFolderNames: controller.managedFolderNames,
+                hashCache: cleanupHashCache,
+                mountedVolumeURLs: mounted,
+                packageReceiptResolver: cleanupPackageReceiptResolver
+            ).candidates()
+            for candidate in candidates {
+                owners[candidate.url] = controller.profileID
+            }
+            found.append(contentsOf: candidates)
+        }
+        cleanupProfileByURL = owners
+        cleanupCandidates = found.sorted { $0.lastUsed < $1.lastUsed }
         if notificationsEnabled && notifyOnCleanup {
             notificationDigestService.noteCleanupScan(cleanupCandidates)
         }
@@ -1109,15 +1144,26 @@ final class AppModel {
         ) ?? []
     }
 
+    /// The watch folder a Cleanup candidate was found in.
+    private func cleanupController(for candidate: CleanupCandidate) -> WatchFolderController? {
+        cleanupProfileByURL[candidate.url].flatMap(watchFolderController(id:))
+            ?? watchFolderController(containing: candidate.url)
+            ?? watchFolderControllers.first
+    }
+
     func fileAway(_ candidate: CleanupCandidate) {
-        guard let directory = DestinationFolderPicker.present(startingAt: watchFolder) else { return }
+        guard let controller = cleanupController(for: candidate),
+              let directory = DestinationFolderPicker.present(startingAt: controller.folder)
+        else {
+            return
+        }
         do {
             let entry = try CleanupProcessor(
-                watchFolder: watchFolder,
-                managedFolderNames: managedFolderNames
+                watchFolder: controller.folder,
+                managedFolderNames: controller.managedFolderNames
             ).fileAway(candidate, to: directory)
-            record(entry)
-            pruneEmptyManagedFolders()
+            record(entry, watchFolderID: controller.profileID)
+            controller.pruneEmptyManagedFolders()
             scanCleanupCandidates()
         } catch {
             record(
@@ -1126,7 +1172,8 @@ final class AppModel {
                     detail: "Could not file away \(candidate.url.lastPathComponent): \(error.localizedDescription)",
                     url: candidate.url,
                     fileName: candidate.url.lastPathComponent
-                )
+                ),
+                watchFolderID: controller.profileID
             )
         }
     }
@@ -1134,7 +1181,7 @@ final class AppModel {
     func keep(_ candidate: CleanupCandidate) {
         var next = snoozedUntil
         next[CleanupScanner.snoozeKey(for: candidate.url)] = CleanupScanner(
-            watchFolder: watchFolder,
+            watchFolder: cleanupController(for: candidate)?.folder ?? candidate.url.deletingLastPathComponent(),
             thresholdDays: cleanupThresholdDays,
             includeWatchRoot: includeWatchRootInCleanup,
             snoozedUntil: snoozedUntil
@@ -1144,6 +1191,8 @@ final class AppModel {
     }
 
     func delete(_ candidate: CleanupCandidate) {
+        let controller = cleanupController(for: candidate)
+        let profileID = controller?.profileID
         NSWorkspace.shared.recycle([candidate.url]) { [weak self] _, error in
             Task { @MainActor in
                 guard let self else { return }
@@ -1154,7 +1203,8 @@ final class AppModel {
                             detail: "Could not delete \(candidate.url.lastPathComponent): \(error.localizedDescription)",
                             url: candidate.url,
                             fileName: candidate.url.lastPathComponent
-                        )
+                        ),
+                        watchFolderID: profileID
                     )
                     return
                 }
@@ -1163,35 +1213,18 @@ final class AppModel {
                         kind: .deleted,
                         detail: "Deleted \(candidate.url.lastPathComponent)",
                         fileName: candidate.url.lastPathComponent
-                    )
+                    ),
+                    watchFolderID: profileID
                 )
-                self.pruneEmptyManagedFolders()
+                controller?.pruneEmptyManagedFolders()
                 self.scanCleanupCandidates()
             }
         }
     }
 
-    private func pruneEmptyManagedFolders() {
-        let entries = CleanupProcessor(
-            watchFolder: watchFolder,
-            managedFolderNames: managedFolderNames
-        ).removeEmptyManagedFolders()
-        recordOrganized(entries)
-    }
-
-    private func restartWatcher() {
-        watcher.stop()
-        watcher.start(folder: watchFolder, ignorePolicy: ignorePolicy) { [weak self] url in
-            Task { @MainActor in
-                self?.handleStableFile(url)
-            }
-        }
-        // Watcher start seeds knownNames with existing root files — restore Wait queue
-        // so pending files remain eligible without mass-organizing the whole Downloads folder.
-        restoreWaitingForAgeFromDisk()
-    }
-
-    private func record(_ entry: ActivityEntry) {
+    /// Records one Activity entry, stamped with the watch folder it came from.
+    func record(_ entry: ActivityEntry, watchFolderID: String? = nil) {
+        let entry = Self.stamped(entry, watchFolderID: watchFolderID)
         activity = ActivityLog.inserting(entry, into: activity)
         if let action = UndoService.makeAction(from: entry) {
             undoService.push(action)
@@ -1203,7 +1236,8 @@ final class AppModel {
 
     /// Record organized ingest entries. Preserves Activity newest-first order while
     /// pushing undo chronologically so LIFO undoes move before rename.
-    private func recordOrganized(_ entries: [ActivityEntry]) {
+    func recordOrganized(_ entries: [ActivityEntry], watchFolderID: String? = nil) {
+        let entries = entries.map { Self.stamped($0, watchFolderID: watchFolderID) }
         guard !entries.isEmpty else { return }
         for entry in entries.reversed() {
             activity = ActivityLog.inserting(entry, into: activity)
@@ -1303,9 +1337,11 @@ final class AppModel {
         dismissUndoToast()
         switch result {
         case .success(let restored):
-            watcher.acknowledgeRootFile(named: restored.lastPathComponent)
+            watchFolderController(containing: restored)?
+                .acknowledgeRootFile(named: restored.lastPathComponent)
             if action.afterURL.lastPathComponent != restored.lastPathComponent {
-                watcher.acknowledgeRootFile(named: action.afterURL.lastPathComponent)
+                watchFolderController(containing: action.afterURL)?
+                    .acknowledgeRootFile(named: action.afterURL.lastPathComponent)
             }
             // Refresh Activity URL for this row when still listed.
             if let idx = activity.firstIndex(where: { $0.id == action.activityID }) {
@@ -1351,7 +1387,7 @@ final class AppModel {
             RulePersistence.enabledByCategory(from: rules),
             forKey: SettingsKey.ruleEnabled
         )
-        watcher.updateIgnorePolicy(ignorePolicy)
+        watchFolderControllers.forEach { $0.updateIgnorePolicy() }
         refreshSuggestions()
     }
 
@@ -1366,31 +1402,20 @@ final class AppModel {
         UserDefaults.standard.set(raw, forKey: SettingsKey.cleanupSnooze)
     }
 
-    private func persistWatchFolderBookmark() {
-        let data = try? watchFolder.bookmarkData(
-            options: .withSecurityScope,
-            includingResourceValuesForKeys: nil,
-            relativeTo: nil
-        )
-        UserDefaults.standard.set(data, forKey: SettingsKey.watchFolderBookmark)
+    private static func stamped(_ entry: ActivityEntry, watchFolderID: String?) -> ActivityEntry {
+        guard let watchFolderID, entry.watchFolderID == nil else { return entry }
+        var copy = entry
+        copy.watchFolderID = watchFolderID
+        return copy
     }
 
-    private func startAccessingWatchFolder() {
-        accessingWatchFolder = watchFolder.startAccessingSecurityScopedResource()
-    }
-
-    private func stopAccessingWatchFolder() {
-        if accessingWatchFolder {
-            watchFolder.stopAccessingSecurityScopedResource()
-            accessingWatchFolder = false
-        }
-    }
-
-    private static func resolveWatchFolder() -> (url: URL, lost: Bool) {
+    /// The 1.2 single watch folder: its bookmark when it resolves, else
+    /// Downloads. Only used to migrate it into profile #1.
+    private static func resolveLegacyWatchFolder() -> URL {
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
-        guard let data = UserDefaults.standard.data(forKey: SettingsKey.watchFolderBookmark) else {
-            return (downloads, false)
+        guard let data = UserDefaults.standard.data(forKey: WatchFolderProfileStore.legacyBookmarkKey) else {
+            return downloads
         }
         var stale = false
         guard let url = try? URL(
@@ -1399,9 +1424,9 @@ final class AppModel {
             relativeTo: nil,
             bookmarkDataIsStale: &stale
         ) else {
-            return (downloads, true)
+            return downloads
         }
-        return (url, false)
+        return url
     }
 
     private static func loadRules() -> [RoutingRule] {
@@ -1434,13 +1459,9 @@ final class AppModel {
 }
 
 private enum SettingsKey {
-    static let paused = AutomaticOrganizingPreference.legacyPausedKey
-    static let automaticOrganizing = AutomaticOrganizingPreference.currentKey
-    static let renameWhenDownloadFinishes = RenameWhenDownloadFinishesPreference.currentKey
     static let cleanupDays = "intake.cleanupDays"
     static let includeRoot = "intake.includeWatchRoot"
     static let aiSuggestions = "intake.aiSuggestions"
-    static let watchFolderBookmark = "intake.watchFolderBookmark"
     static let showDock = "intake.showInDock"
     static let showMenuBar = "intake.showInMenuBar"
     static let settingsPane = "intake.settingsPane"
