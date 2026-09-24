@@ -61,26 +61,107 @@ public struct CleanupProcessor: Sendable {
         fileManager: FileManager = .default,
         now: Date = Date()
     ) -> [ActivityEntry] {
-        managedFolderNames.sorted().compactMap { name in
+        var entries: [ActivityEntry] = []
+
+        // First, remove empty date subfolders within managed folders
+        for managedName in managedFolderNames.sorted() {
+            let managedFolder = watchFolder.appendingPathComponent(managedName, isDirectory: true)
+            entries.append(
+                contentsOf: removeEmptyDateSubfolders(
+                    in: managedFolder,
+                    fileManager: fileManager,
+                    now: now
+                )
+            )
+        }
+
+        // Then remove the managed folders themselves if they're empty
+        for name in managedFolderNames.sorted() {
             let folder = watchFolder.appendingPathComponent(name, isDirectory: true)
             guard isEmptyManagedFolder(folder, fileManager: fileManager) else {
-                return nil
+                continue
             }
             try? fileManager.removeItem(at: folder)
             guard !fileManager.fileExists(atPath: folder.path) else {
-                return nil
+                continue
             }
-            return ActivityEntry(
-                date: now,
-                kind: .folderRemoved,
-                detail: "Removed empty folder \(name)",
-                fileName: name,
-                destinationFolder: name
+            entries.append(
+                ActivityEntry(
+                    date: now,
+                    kind: .folderRemoved,
+                    detail: "Removed empty folder \(name)",
+                    fileName: name,
+                    destinationFolder: name
+                )
             )
         }
+
+        return entries
+    }
+
+    /// Recursively removes empty date subfolders (YYYY or YYYY-MM) within a managed folder.
+    private func removeEmptyDateSubfolders(
+        in folder: URL,
+        fileManager: FileManager,
+        now: Date
+    ) -> [ActivityEntry] {
+        var entries: [ActivityEntry] = []
+
+        guard fileManager.fileExists(atPath: folder.path) else { return [] }
+
+        let contents = (try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? []
+        for item in contents {
+            guard !Self.ignorableEmptyFolderNames.contains(item) else { continue }
+
+            let subfolder = folder.appendingPathComponent(item, isDirectory: true)
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: subfolder.path, isDirectory: &isDir),
+                  isDir.boolValue
+            else {
+                continue
+            }
+
+            // Recursively check subfolders
+            entries.append(
+                contentsOf: removeEmptyDateSubfolders(
+                    in: subfolder,
+                    fileManager: fileManager,
+                    now: now
+                )
+            )
+
+            // After recursion, check if this folder is now empty
+            if isEmptyFolder(subfolder, fileManager: fileManager) {
+                try? fileManager.removeItem(at: subfolder)
+                if !fileManager.fileExists(atPath: subfolder.path) {
+                    entries.append(
+                        ActivityEntry(
+                            date: now,
+                            kind: .folderRemoved,
+                            detail: "Removed empty folder \(item)",
+                            fileName: item,
+                            destinationFolder: item
+                        )
+                    )
+                }
+            }
+        }
+
+        return entries
     }
 
     private func isEmptyManagedFolder(_ folder: URL, fileManager: FileManager) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else {
+            return false
+        }
+        let names = (try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? []
+        return names.allSatisfy { Self.ignorableEmptyFolderNames.contains($0) }
+    }
+
+    private func isEmptyFolder(_ folder: URL, fileManager: FileManager) -> Bool {
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDirectory),
               isDirectory.boolValue

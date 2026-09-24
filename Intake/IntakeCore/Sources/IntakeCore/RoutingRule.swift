@@ -1,5 +1,22 @@
 import Foundation
 
+/// Patterns for organizing files into date-based subfolders within the destination.
+public enum SubfolderPattern: String, Identifiable, Equatable, Sendable, Codable, CaseIterable {
+    case none
+    case year
+    case yearMonth
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .none: "None"
+        case .year: "By year"
+        case .yearMonth: "By year and month"
+        }
+    }
+}
+
 public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable {
     public var id: String
     public var folderName: String
@@ -12,6 +29,8 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
     public var isEnabled: Bool
     public var isBuiltIn: Bool
     public var builtInCategory: FileCategory?
+    /// Pattern for creating date-based subfolders. Defaults to `none`.
+    public var subfolderPattern: SubfolderPattern
 
     /// Built-in taxonomy category, or `.other` for custom rules.
     public var category: FileCategory {
@@ -36,7 +55,8 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
         conditions: [RuleCondition] = [],
         isEnabled: Bool = true,
         isBuiltIn: Bool = false,
-        builtInCategory: FileCategory? = nil
+        builtInCategory: FileCategory? = nil,
+        subfolderPattern: SubfolderPattern = .none
     ) {
         self.id = id
         self.folderName = folderName
@@ -46,6 +66,7 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
         self.isEnabled = isEnabled
         self.isBuiltIn = isBuiltIn
         self.builtInCategory = builtInCategory
+        self.subfolderPattern = subfolderPattern
     }
 
     public init(category: FileCategory, extensions: Set<String>, isEnabled: Bool = true) {
@@ -56,7 +77,8 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
             extensions: extensions,
             isEnabled: isEnabled,
             isBuiltIn: true,
-            builtInCategory: category
+            builtInCategory: category,
+            subfolderPattern: .none
         )
     }
 
@@ -65,7 +87,8 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
         extensions: Set<String>,
         conditions: [RuleCondition] = [],
         isEnabled: Bool = true,
-        id: String = "custom-\(UUID().uuidString)"
+        id: String = "custom-\(UUID().uuidString)",
+        subfolderPattern: SubfolderPattern = .none
     ) -> RoutingRule {
         RoutingRule(
             id: id,
@@ -75,7 +98,8 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
             conditions: conditions,
             isEnabled: isEnabled,
             isBuiltIn: false,
-            builtInCategory: nil
+            builtInCategory: nil,
+            subfolderPattern: subfolderPattern
         )
     }
 
@@ -88,11 +112,12 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, folderName, systemImage, extensions, conditions, isEnabled, isBuiltIn, builtInCategory
+        case id, folderName, systemImage, extensions, conditions, isEnabled, isBuiltIn, builtInCategory, subfolderPattern
     }
 
     /// Rules saved before conditions existed decode with an empty list, so
-    /// persisted 1.2 rules load unchanged.
+    /// persisted 1.2 rules load unchanged. Rules saved before subfolderPattern
+    /// existed decode with `.none`, preserving existing behavior.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -103,5 +128,6 @@ public struct RoutingRule: Identifiable, Equatable, Sendable, Codable, Hashable 
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
         isBuiltIn = try container.decode(Bool.self, forKey: .isBuiltIn)
         builtInCategory = try container.decodeIfPresent(FileCategory.self, forKey: .builtInCategory)
+        subfolderPattern = try container.decodeIfPresent(SubfolderPattern.self, forKey: .subfolderPattern) ?? .none
     }
 }

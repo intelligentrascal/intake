@@ -269,4 +269,178 @@ struct IngestPipelineTests {
         let secondPlan = try #require(pipeline.plan(for: secondSource, fileManager: fileManager))
         #expect(secondPlan.isNewFolder == false)
     }
+
+    @Test
+    func dateSubfolderPatternNoneDoesNotAddSubfolder() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempRoot("subfolder-none")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let rules = [
+            RoutingRule.custom(
+                folderName: "Images",
+                extensions: ["jpg"],
+                subfolderPattern: .none
+            ),
+        ]
+        let pipeline = IngestPipeline(watchFolder: root, rules: rules)
+
+        let source = root.appendingPathComponent("photo.jpg")
+        try Data("jpg".utf8).write(to: source)
+
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24))!
+        let plan = try #require(pipeline.plan(for: source, stableAt: date, fileManager: fileManager))
+
+        #expect(plan.destinationDirectory.lastPathComponent == "Images")
+        #expect(plan.destinationFolderName == "Images")
+    }
+
+    @Test
+    func dateSubfolderPatternYearCreatesYearSubfolder() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempRoot("subfolder-year")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let rules = [
+            RoutingRule.custom(
+                folderName: "Images",
+                extensions: ["jpg"],
+                subfolderPattern: .year
+            ),
+        ]
+        let pipeline = IngestPipeline(watchFolder: root, rules: rules)
+
+        let source = root.appendingPathComponent("photo.jpg")
+        try Data("jpg".utf8).write(to: source)
+
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24))!
+        let plan = try #require(pipeline.plan(for: source, stableAt: date, fileManager: fileManager))
+
+        #expect(plan.destinationDirectory.lastPathComponent == "2026")
+        let parentDirectory = plan.destinationDirectory.deletingLastPathComponent()
+        #expect(parentDirectory.lastPathComponent == "Images")
+        #expect(plan.destinationFolderName == "Images")
+    }
+
+    @Test
+    func dateSubfolderPatternYearMonthCreatesYearMonthSubfolder() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempRoot("subfolder-yearmonth")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let rules = [
+            RoutingRule.custom(
+                folderName: "Images",
+                extensions: ["jpg"],
+                subfolderPattern: .yearMonth
+            ),
+        ]
+        let pipeline = IngestPipeline(watchFolder: root, rules: rules)
+
+        let source = root.appendingPathComponent("photo.jpg")
+        try Data("jpg".utf8).write(to: source)
+
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24))!
+        let plan = try #require(pipeline.plan(for: source, stableAt: date, fileManager: fileManager))
+
+        #expect(plan.destinationDirectory.lastPathComponent == "2026-09")
+        let parentDirectory = plan.destinationDirectory.deletingLastPathComponent()
+        #expect(parentDirectory.lastPathComponent == "Images")
+        #expect(plan.destinationFolderName == "Images")
+    }
+
+    @Test
+    func dateSubfolderCreatedLazilyOnlyAtMoveTime() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempRoot("subfolder-lazy")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let rules = [
+            RoutingRule.custom(
+                folderName: "Images",
+                extensions: ["jpg"],
+                subfolderPattern: .yearMonth
+            ),
+        ]
+        let pipeline = IngestPipeline(watchFolder: root, rules: rules)
+
+        let source = root.appendingPathComponent("photo.jpg")
+        try Data("jpg".utf8).write(to: source)
+
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24))!
+        let plan = try #require(pipeline.plan(for: source, stableAt: date, fileManager: fileManager))
+
+        // After plan, the destination folder (including subfolder) should not exist yet
+        #expect(fileManager.fileExists(atPath: plan.destinationDirectory.path) == false)
+        #expect(plan.isNewFolder == true)
+
+        // After apply, it should exist
+        _ = try pipeline.apply(plan, stableAt: date, fileManager: fileManager)
+        #expect(fileManager.fileExists(atPath: plan.destinationURL.path))
+        #expect(fileManager.fileExists(atPath: plan.destinationDirectory.path))
+    }
+
+    @Test
+    func oldRulesWithoutSubfolderPatternDecodeToNone() throws {
+        let json = """
+        {
+            "id": "test-rule",
+            "folderName": "Documents",
+            "systemImage": "folder",
+            "extensions": ["pdf"],
+            "conditions": [],
+            "isEnabled": true,
+            "isBuiltIn": false,
+            "builtInCategory": null
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        let rule = try decoder.decode(RoutingRule.self, from: data)
+
+        #expect(rule.subfolderPattern == .none)
+    }
+
+    @Test
+    func undoRestoresFileAndEmptySubfolderIsRemovedByCleanup() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempRoot("undo-subfolder")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let rules = [
+            RoutingRule.custom(
+                folderName: "Documents",
+                extensions: ["pdf"],
+                subfolderPattern: .yearMonth
+            ),
+        ]
+        let pipeline = IngestPipeline(watchFolder: root, rules: rules)
+
+        let source = root.appendingPathComponent("file.pdf")
+        try Data("pdf".utf8).write(to: source)
+
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 24))!
+        let plan = try #require(pipeline.plan(for: source, stableAt: date, fileManager: fileManager))
+
+        let entries = try pipeline.apply(plan, stableAt: date, fileManager: fileManager)
+        #expect(fileManager.fileExists(atPath: plan.destinationURL.path))
+
+        // Verify paths: beforePath should be in root, afterPath should be in dated subfolder
+        let movedEntry = entries.first(where: { $0.kind == .moved })
+        #expect((movedEntry?.beforePath ?? "").contains(root.path) == true)
+        #expect((movedEntry?.afterPath ?? "").contains("2026-09") == true)
+
+        // Undo by moving back (simulating the before path)
+        let beforeURL = URL(fileURLWithPath: movedEntry?.beforePath ?? source.path)
+        try fileManager.moveItem(at: plan.destinationURL, to: beforeURL)
+        #expect(fileManager.fileExists(atPath: beforeURL.path))
+
+        // Cleanup should remove empty date subfolder
+        let processor = CleanupProcessor(watchFolder: root)
+        let cleanupEntries = processor.removeEmptyManagedFolders(fileManager: fileManager)
+
+        // Verify the empty date subfolder was removed
+        #expect(fileManager.fileExists(atPath: plan.destinationDirectory.path) == false)
+        #expect(cleanupEntries.contains { $0.kind == .folderRemoved } == true)
+    }
 }

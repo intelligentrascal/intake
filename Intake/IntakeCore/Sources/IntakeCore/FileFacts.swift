@@ -57,4 +57,14 @@ public struct FileFacts: Equatable, Sendable {
         let sourceURLs = WhereFromMetadata.urls(atPath: url.path)
         return FileFacts(fileURL: url, size: size, sourceURLs: sourceURLs)
     }
+
+    /// Returns the file's date added (contentModificationDate), if available.
+    public static func dateAdded(for url: URL, fileManager: FileManager = .default) -> Date? {
+        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
+    /// Returns the file's creation date, if available.
+    public static func creationDate(for url: URL, fileManager: FileManager = .default) -> Date? {
+        try? url.resourceValues(forKeys: [.creationDateKey]).creationDate
+    }
 }

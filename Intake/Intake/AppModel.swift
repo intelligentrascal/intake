@@ -625,7 +625,8 @@ final class AppModel {
         folderName: String,
         extensions: Set<String>,
         conditions: [RuleCondition] = [],
-        isEnabled: Bool
+        isEnabled: Bool,
+        subfolderPattern: SubfolderPattern = .none
     ) {
         if let id {
             rules = RuleMutation.updating(
@@ -634,7 +635,8 @@ final class AppModel {
                 folderName: folderName,
                 extensions: extensions,
                 conditions: conditions,
-                isEnabled: isEnabled
+                isEnabled: isEnabled,
+                subfolderPattern: subfolderPattern
             )
         } else {
             rules = RuleMutation.addingCustom(
@@ -642,7 +644,8 @@ final class AppModel {
                 folderName: folderName,
                 extensions: extensions,
                 conditions: conditions,
-                isEnabled: isEnabled
+                isEnabled: isEnabled,
+                subfolderPattern: subfolderPattern
             )
         }
     }
