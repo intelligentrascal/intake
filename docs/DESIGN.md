@@ -41,7 +41,9 @@ General → Organizing, next to Automatic organizing / Wait before organizing. N
 
 ## Activity
 
-SwiftUI `Window("Activity", id: "activity")` with `.defaultLaunchBehavior(.suppressed)` — audit trail, not the Dock default. Launch / Dock reopen still bring **Settings**. Activity opens only via Open Activity / menu / `openActivity()`. Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Empty: ContentUnavailableView “No activity yet”. Double-click or Reveal in Finder (toolbar or context menu) opens the file; selection alone does not. Context menu: Reveal / Copy path. Persists across launches with a cap.
+SwiftUI `Window("Activity", id: "activity")` with `.defaultLaunchBehavior(.suppressed)` — audit trail, not the Dock default. Launch / Dock reopen still bring **Settings**. Activity opens only via Open Activity / menu / `openActivity()`. Chronological list: renamed / moved / skipped / error (and cleanup delete / empty-folder notes). Empty: ContentUnavailableView "No activity yet". Double-click or Reveal in Finder (toolbar or context menu) opens the file — Reveal resolves through the row's before/after path chain so a renamed-then-moved file still opens where it actually is, falling back to its last known parent folder; selection alone does not reveal. Context menu: Reveal / Copy path. Persists across launches with a cap.
+
+The same list (`ActivityListView`) is embedded read-only in Settings → Activity (`showsRevealToolbarItem: false`): no toolbar there, since an `NSToolbar` on the Settings window would grow its title bar and shift every pane's content on switch. Settings keeps Reveal via double-click and the context menu (Control-click).
 
 Native **MeshGradient** atmosphere on the Activity background (near-black + `#1D16E9` @ ~34%). Reduce Motion / Increase Contrast / Reduce Transparency → static wash or solid `surface`. Optional faint Settings wash behind the split view. Never React, WKWebView, or Paper web shaders.
 
