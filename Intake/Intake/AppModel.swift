@@ -107,7 +107,7 @@ final class AppModel {
 
     /// Bumped so MenuBarExtra `SettingsOpenBridge` calls SwiftUI `openSettings`.
     var settingsWindowRequestID: UInt64 = 0
-    var organizeConfirmPresented = false
+    var organizePreviewPresented = false
     var organizeNothingPresented = false
     var organizeProgressPresented = false
     var organizeDonePresented = false
@@ -115,6 +115,10 @@ final class AppModel {
     var organizeProcessedCount = 0
     var organizeSummary: OrganizeExistingSummary?
     var isOrganizingExisting = false
+    /// What Organize Existing will do, shown in the preview sheet before Apply.
+    var organizePreview: OrganizeExistingPreview?
+    /// Source URLs the user excluded in the preview (single files or whole groups).
+    var organizeExcludedURLs: Set<URL> = []
     var snoozedUntil: [String: Date] {
         didSet { persistSnooze() }
     }
@@ -162,8 +166,6 @@ final class AppModel {
     private var ageGateHeartbeatTask: Task<Void, Never>?
     @ObservationIgnored
     private var arrivedDuringOrganize: [URL] = []
-    @ObservationIgnored
-    private var pendingOrganizeScan: OrganizeExistingScan?
     @ObservationIgnored
     private var organizeCancelRequested = false
     @ObservationIgnored
@@ -397,11 +399,40 @@ final class AppModel {
         OrganizeExistingCopy.confirmTitle(folderName: watchFolder.lastPathComponent)
     }
 
-    var organizeConfirmMessage: String {
-        if isPaused {
-            return OrganizeExistingCopy.confirmBody + "\n\n" + OrganizeExistingCopy.pausedOneShotNote
+    var organizePausedNote: String? {
+        isPaused ? OrganizeExistingCopy.pausedOneShotNote : nil
+    }
+
+    /// Files still selected in the preview (not excluded), in group order.
+    var organizeSelectedCount: Int {
+        guard let preview = organizePreview else { return 0 }
+        return preview.groups.reduce(0) { total, group in
+            total + group.items.filter { !organizeExcludedURLs.contains($0.id) }.count
         }
-        return OrganizeExistingCopy.confirmBody
+    }
+
+    func isGroupFullyExcluded(_ group: OrganizePreviewGroup) -> Bool {
+        group.items.allSatisfy { organizeExcludedURLs.contains($0.id) }
+    }
+
+    func toggleExcluded(_ item: OrganizePreviewItem) {
+        if organizeExcludedURLs.contains(item.id) {
+            organizeExcludedURLs.remove(item.id)
+        } else {
+            organizeExcludedURLs.insert(item.id)
+        }
+    }
+
+    func toggleGroupExcluded(_ group: OrganizePreviewGroup) {
+        if isGroupFullyExcluded(group) {
+            for item in group.items {
+                organizeExcludedURLs.remove(item.id)
+            }
+        } else {
+            for item in group.items {
+                organizeExcludedURLs.insert(item.id)
+            }
+        }
     }
 
     func requestOrganizeExisting() {
@@ -411,19 +442,33 @@ final class AppModel {
             return
         }
         let scan = OrganizeExistingScanner(watchFolder: watchFolder).scan()
-        pendingOrganizeScan = scan
+        let pipeline = IngestPipeline(watchFolder: watchFolder, rules: rules)
+        let preview = OrganizeExistingPreviewBuilder.build(scan: scan, pipeline: pipeline)
+        organizePreview = preview
+        organizeExcludedURLs = []
         openActivity()
-        if scan.eligible.isEmpty {
+        if preview.isEmpty {
             organizeNothingPresented = true
             return
         }
-        organizeConfirmPresented = true
+        organizePreviewPresented = true
     }
 
-    func confirmOrganizeExisting() {
-        organizeConfirmPresented = false
-        guard let scan = pendingOrganizeScan else { return }
-        startOrganizeExisting(scan)
+    func confirmOrganizePreview() {
+        organizePreviewPresented = false
+        guard let preview = organizePreview else { return }
+        let selectedItems = preview.groups.flatMap(\.items).filter {
+            !organizeExcludedURLs.contains($0.id)
+        }
+        startOrganizeExisting(selectedItems: selectedItems, preScanned: preview.skipped)
+    }
+
+    /// Cancel changes nothing: the preview never touched disk, so dismissing it
+    /// is enough.
+    func cancelOrganizePreview() {
+        organizePreviewPresented = false
+        organizePreview = nil
+        organizeExcludedURLs = []
     }
 
     func cancelOrganizeExisting() {
@@ -431,10 +476,13 @@ final class AppModel {
         organizeTask?.cancel()
     }
 
-    private func startOrganizeExisting(_ scan: OrganizeExistingScan) {
+    private func startOrganizeExisting(
+        selectedItems: [OrganizePreviewItem],
+        preScanned: [OrganizeExistingSkip]
+    ) {
         organizeCancelRequested = false
         isOrganizingExisting = true
-        organizeEligibleTotal = scan.eligible.count
+        organizeEligibleTotal = selectedItems.count
         organizeProcessedCount = 0
         organizeProgressPresented = true
         let processor = OrganizeExistingProcessor(
@@ -442,60 +490,47 @@ final class AppModel {
             rules: rules,
             ignorePolicy: ignorePolicy
         )
-        let skippedURLs = scan.skipped
-        let files = scan.eligible
-        let eligibleSet = Set(files.map(\.standardizedFileURL))
+        let eligibleSet = Set(selectedItems.map { $0.plan.sourceURL.standardizedFileURL })
         waitingForAge.removeAll { eligibleSet.contains($0.url) }
         persistWaitingForAge()
 
         organizeTask = Task { @MainActor in
-            for url in skippedURLs where !url.lastPathComponent.hasPrefix(".") {
+            for skip in preScanned where !skip.url.lastPathComponent.hasPrefix(".") {
                 self.record(
                     ActivityEntry(
                         kind: .skipped,
-                        detail: "Skipped \(url.lastPathComponent)",
-                        url: url,
-                        fileName: url.lastPathComponent
+                        detail: "Skipped \(skip.url.lastPathComponent) — \(skip.reason.reasonText.lowercased())",
+                        url: skip.url,
+                        fileName: skip.url.lastPathComponent
                     )
                 )
             }
 
-            var organized = 0
-            var skipped = skippedURLs.count
-            var errors = 0
-
-            for (index, url) in files.enumerated() {
-                if Task.isCancelled || self.organizeCancelRequested {
-                    break
+            let result = processor.applyPreview(
+                items: selectedItems,
+                alreadySkipped: preScanned.count,
+                isCancelled: { Task.isCancelled || self.organizeCancelRequested },
+                onProgress: { processed, _ in
+                    self.organizeProcessedCount = processed
+                },
+                onFileResult: { fileResult in
+                    switch fileResult {
+                    case .organized(let entries):
+                        self.recordOrganized(entries)
+                    case .skipped(let entry), .error(let entry):
+                        self.record(entry)
+                    case .notInWatchRoot:
+                        break
+                    }
                 }
-                self.arrivedWhilePaused.removeAll {
-                    $0.standardizedFileURL == url.standardizedFileURL
-                }
-                switch processor.processOne(url) {
-                case .organized(let entries):
-                    organized += 1
-                    recordOrganized(entries)
-                case .skipped(let entry):
-                    skipped += 1
-                    self.record(entry)
-                case .error(let entry):
-                    errors += 1
-                    self.record(entry)
-                case .notInWatchRoot:
-                    skipped += 1
-                }
-                self.organizeProcessedCount = index + 1
-            }
-
-            self.organizeSummary = OrganizeExistingSummary(
-                organized: organized,
-                skipped: skipped,
-                errors: errors,
-                cancelled: Task.isCancelled || self.organizeCancelRequested
             )
+
+            self.organizeSummary = result.summary
             self.isOrganizingExisting = false
             self.organizeProgressPresented = false
             self.organizeDonePresented = true
+            self.organizePreview = nil
+            self.organizeExcludedURLs = []
             self.scanCleanupCandidates()
             self.flushArrivedDuringOrganize()
         }

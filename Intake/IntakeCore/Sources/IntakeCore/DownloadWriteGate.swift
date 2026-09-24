@@ -7,7 +7,10 @@ public enum DownloadWriteGate: Sendable {
     }
 
     public static func fileSize(at url: URL, fileManager: FileManager = .default) -> Int64 {
-        if let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) {
+        // Fresh URL: resource values cached on a URL that's been held across a
+        // write (e.g. a preview snapshot, then Apply re-checking it) can be stale.
+        let fresh = URL(fileURLWithPath: url.path)
+        if let size = (try? fresh.resourceValues(forKeys: [.fileSizeKey]).fileSize) {
             return Int64(size)
         }
         if let attrs = try? fileManager.attributesOfItem(atPath: url.path),

@@ -255,11 +255,18 @@ struct IngestPipelineTests {
         }
 
         #expect(fileManager.fileExists(atPath: plan.destinationDirectory.path) == false)
+        #expect(plan.isNewFolder)
 
         let entries = try pipeline.apply(plan, fileManager: fileManager)
         #expect(fileManager.fileExists(atPath: source.path) == false)
         #expect(fileManager.fileExists(atPath: plan.destinationURL.path))
         #expect(entries.map(\.kind) == [.renamed, .moved])
         #expect(plan.category == .documents)
+
+        // A second file routed to the now-existing folder is not "new".
+        let secondSource = root.appendingPathComponent("Second_Notes.md")
+        try "hi".write(to: secondSource, atomically: true, encoding: .utf8)
+        let secondPlan = try #require(pipeline.plan(for: secondSource, fileManager: fileManager))
+        #expect(secondPlan.isNewFolder == false)
     }
 }

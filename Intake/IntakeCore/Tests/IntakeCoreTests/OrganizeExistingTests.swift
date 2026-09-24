@@ -31,15 +31,6 @@ struct OrganizeExistingCopyTests {
         )
     }
 
-    @Test
-    func confirmationIsRequiredOnceTenOrMoreEligibleFiles() {
-        #expect(OrganizeExistingScan(eligible: urls(9), skipped: []).needsConfirmation == false)
-        #expect(OrganizeExistingScan(eligible: urls(10), skipped: []).needsConfirmation == true)
-    }
-
-    private func urls(_ count: Int) -> [URL] {
-        (0..<count).map { URL(fileURLWithPath: "/tmp/file-\($0).pdf") }
-    }
 }
 
 struct OrganizeExistingScannerTests {
@@ -71,7 +62,7 @@ struct OrganizeExistingScannerTests {
 
         let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         let eligibleNames = Set(scan.eligible.map(\.lastPathComponent))
-        let skippedNames = Set(scan.skipped.map(\.lastPathComponent))
+        let skippedNames = Set(scan.skipped.map(\.url.lastPathComponent))
 
         #expect(eligibleNames == ["Quarterly_Report.pdf", "holiday.heic"])
         #expect(skippedNames == ["movie.mp4.crdownload"])
@@ -95,7 +86,7 @@ struct OrganizeExistingScannerTests {
         let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         #expect(scan.eligible.map(\.lastPathComponent) == ["Invoice.pdf"])
         #expect(
-            Set(scan.skipped.map(\.lastPathComponent))
+            Set(scan.skipped.map(\.url.lastPathComponent))
                 == [
                     "Invoice.pdf.download",
                     "photo.jpg.crdownload",
@@ -203,7 +194,7 @@ struct OrganizeExistingProcessorTests {
             fileManager: fileManager
         )
 
-        #expect(scan.skipped.map(\.lastPathComponent) == ["setup.dmg.part"])
+        #expect(scan.skipped.map(\.url.lastPathComponent) == ["setup.dmg.part"])
         #expect(result.summary.organized == 1)
         #expect(result.summary.skipped == 1)
         #expect(fileManager.fileExists(atPath: partial.path))
@@ -267,5 +258,186 @@ struct OrganizeExistingProcessorTests {
         )
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root
+    }
+}
+
+struct OrganizeExistingPreviewTests {
+    private func makeTempWatchFolder() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "intake-organize-preview-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test
+    func previewGroupsEligibleFilesByDestinationWithCountsAndMarksNewFolders() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+
+        try Data("notes".utf8).write(to: root.appendingPathComponent("Team_Notes.md"))
+        try Data("more".utf8).write(to: root.appendingPathComponent("More_Notes.md"))
+        try Data("1,2".utf8).write(to: root.appendingPathComponent("budget.csv"))
+
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
+        let pipeline = IngestPipeline(watchFolder: root)
+        let preview = OrganizeExistingPreviewBuilder.build(
+            scan: scan,
+            pipeline: pipeline,
+            fileManager: fileManager
+        )
+
+        #expect(preview.eligibleCount == 3)
+        let documents = try #require(preview.groups.first { $0.destinationFolderName == "Documents" })
+        #expect(documents.items.count == 2)
+        #expect(documents.isNewFolder)
+        let spreadsheets = try #require(
+            preview.groups.first { $0.destinationFolderName == "Spreadsheets" }
+        )
+        #expect(spreadsheets.items.count == 1)
+        #expect(spreadsheets.isNewFolder)
+        #expect(
+            Set(documents.items.map(\.plan.renamedFileName)) == ["Team Notes.md", "More Notes.md"]
+        )
+    }
+
+    @Test
+    func previewCarriesASkipReasonForEachIneligibleFile() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+
+        try Data("ready".utf8).write(to: root.appendingPathComponent("ready.pdf"))
+        try Data().write(to: root.appendingPathComponent("writing.dmg"))
+        try Data("partial".utf8).write(to: root.appendingPathComponent("movie.mp4.crdownload"))
+        try Data("hidden".utf8).write(to: root.appendingPathComponent(".DS_Store"))
+
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
+        let preview = OrganizeExistingPreviewBuilder.build(
+            scan: scan,
+            pipeline: IngestPipeline(watchFolder: root),
+            fileManager: fileManager
+        )
+
+        let reasons = Dictionary(
+            uniqueKeysWithValues: preview.skipped.map { ($0.url.lastPathComponent, $0.reason) }
+        )
+        #expect(reasons["writing.dmg"] == .emptyPlaceholder)
+        #expect(reasons["movie.mp4.crdownload"] == .stillDownloading)
+        #expect(reasons[".DS_Store"] == .ignored)
+    }
+
+    @Test
+    func previewComputesDistinctCollisionSuffixesForTwoFilesThatWouldCollide() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+
+        // Both normalize to "Invoice.pdf" and both route to Documents.
+        try Data("a".utf8).write(to: root.appendingPathComponent("invoice.pdf"))
+        try Data("b".utf8).write(to: root.appendingPathComponent("Invoice_.pdf"))
+
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
+        let pipeline = IngestPipeline(watchFolder: root)
+        let preview = OrganizeExistingPreviewBuilder.build(
+            scan: scan,
+            pipeline: pipeline,
+            fileManager: fileManager
+        )
+
+        let documents = try #require(preview.groups.first { $0.destinationFolderName == "Documents" })
+        #expect(documents.items.count == 2)
+        let names = Set(documents.items.map(\.plan.renamedFileName))
+        #expect(names == ["Invoice.pdf", "Invoice 2.pdf"])
+
+        // Applying every previewed item reproduces exactly what the preview promised.
+        let processor = OrganizeExistingProcessor(watchFolder: root)
+        let result = processor.applyPreview(items: documents.items, fileManager: fileManager)
+        #expect(result.summary.organized == 2)
+        #expect(result.summary.skipped == 0)
+        #expect(result.summary.errors == 0)
+        let documentsFolder = root.appendingPathComponent("Documents", isDirectory: true)
+        #expect(fileManager.fileExists(atPath: documentsFolder.appendingPathComponent("Invoice.pdf").path))
+        #expect(
+            fileManager.fileExists(atPath: documentsFolder.appendingPathComponent("Invoice 2.pdf").path)
+        )
+    }
+
+    @Test
+    func excludedItemsAreNeverPassedToApplyAndStayUntouched() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+
+        try Data("a".utf8).write(to: root.appendingPathComponent("keep.pdf"))
+        try Data("b".utf8).write(to: root.appendingPathComponent("skip.pdf"))
+
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
+        let preview = OrganizeExistingPreviewBuilder.build(
+            scan: scan,
+            pipeline: IngestPipeline(watchFolder: root),
+            fileManager: fileManager
+        )
+        let documents = try #require(preview.groups.first { $0.destinationFolderName == "Documents" })
+        let excluded = try #require(documents.items.first { $0.plan.sourceURL.lastPathComponent == "skip.pdf" })
+        let selected = documents.items.filter { $0.id != excluded.id }
+
+        let processor = OrganizeExistingProcessor(watchFolder: root)
+        let result = processor.applyPreview(items: selected, fileManager: fileManager)
+
+        #expect(result.summary.organized == 1)
+        #expect(fileManager.fileExists(atPath: root.appendingPathComponent("skip.pdf").path))
+        #expect(
+            fileManager.fileExists(
+                atPath: root.appendingPathComponent("Documents", isDirectory: true)
+                    .appendingPathComponent("Keep.pdf").path
+            )
+        )
+    }
+
+    @Test
+    func applyLogsAFileThatDisappearedOrChangedAsSkippedNotAnError() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+
+        let goneFile = root.appendingPathComponent("gone.pdf")
+        let changedFile = root.appendingPathComponent("changed.pdf")
+        let stableFile = root.appendingPathComponent("stable.pdf")
+        try Data("gone".utf8).write(to: goneFile)
+        try Data("changed".utf8).write(to: changedFile)
+        try Data("stable".utf8).write(to: stableFile)
+
+        let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
+        let preview = OrganizeExistingPreviewBuilder.build(
+            scan: scan,
+            pipeline: IngestPipeline(watchFolder: root),
+            fileManager: fileManager
+        )
+        let documents = try #require(preview.groups.first { $0.destinationFolderName == "Documents" })
+
+        // Mutate disk after the preview was built, before Apply runs.
+        try fileManager.removeItem(at: goneFile)
+        try Data("changed a lot more than before".utf8).write(to: changedFile)
+
+        let processor = OrganizeExistingProcessor(watchFolder: root)
+        let result = processor.applyPreview(items: documents.items, fileManager: fileManager)
+
+        #expect(result.summary.organized == 1)
+        #expect(result.summary.skipped == 2)
+        #expect(result.summary.errors == 0)
+        #expect(result.entries.allSatisfy { $0.kind != ActivityEntry.Kind.error })
+        #expect(
+            result.entries.filter { $0.kind == ActivityEntry.Kind.skipped }.count == 2
+        )
+        #expect(fileManager.fileExists(atPath: changedFile.path))
+        #expect(
+            fileManager.fileExists(
+                atPath: root.appendingPathComponent("Documents", isDirectory: true)
+                    .appendingPathComponent("Stable.pdf").path
+            )
+        )
     }
 }

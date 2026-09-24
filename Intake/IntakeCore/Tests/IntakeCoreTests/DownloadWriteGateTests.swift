@@ -218,7 +218,8 @@ struct OrganizeExistingEmptyWriteGateTests {
 
         let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         #expect(Set(scan.eligible.map(\.lastPathComponent)) == ["ready.pdf"])
-        #expect(scan.skipped.map(\.lastPathComponent) == ["writing.dmg"])
+        #expect(scan.skipped.map(\.url.lastPathComponent) == ["writing.dmg"])
+        #expect(scan.skipped.map(\.reason) == [.emptyPlaceholder])
         #expect(fileManager.fileExists(atPath: empty.path))
     }
 
@@ -235,7 +236,7 @@ struct OrganizeExistingEmptyWriteGateTests {
 
         let scan = OrganizeExistingScanner(watchFolder: root).scan(fileManager: fileManager)
         #expect(scan.eligible.map(\.lastPathComponent) == ["Resurf 2.9.2-121 2.dmg"])
-        #expect(scan.skipped.map(\.lastPathComponent) == ["Resurf 2.9.2-121.dmg"])
+        #expect(scan.skipped.map(\.url.lastPathComponent) == ["Resurf 2.9.2-121.dmg"])
         #expect(fileManager.fileExists(atPath: empty.path))
         #expect(fileManager.fileExists(atPath: full.path))
     }
