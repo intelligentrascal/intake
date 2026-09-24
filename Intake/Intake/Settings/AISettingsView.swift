@@ -8,9 +8,9 @@ struct AISettingsView: View {
     @State private var otherProviders: [OtherAIProviderPresence] = OtherAIProviderDetector.scan()
     @State private var keyInfo: OpenRouterKeyInfo?
     @State private var creditsInfo: OpenRouterCreditsInfo?
-    @State private var spendTracker = OpenRouterSpendTracker()
     @State private var lastLookupTime: Date?
     @State private var isLoading = false
+    @State private var showResetConfirmation = false
 
     private let lookupDebounceInterval: TimeInterval = 60
 
@@ -71,14 +71,22 @@ struct AISettingsView: View {
                 if let creditsInfo {
                     LabeledContent("Account Credits", value: String(format: "$%.2f", creditsInfo.totalCredits))
                 }
-                if spendTracker.totalSpend > 0 {
+                if model.openRouterSpendTracker.totalSpend > 0 {
                     Divider()
-                    LabeledContent("Total Intake Spend", value: String(format: "$%.4f", spendTracker.totalSpend))
-                    LabeledContent("This Month", value: String(format: "$%.4f", spendTracker.monthlySpend))
-                    Button("Reset Monthly", role: .destructive) {
-                        var newTracker = spendTracker
-                        newTracker.resetMonthly()
-                        spendTracker = newTracker
+                    LabeledContent("Total Intake Spend", value: String(format: "$%.4f", model.openRouterSpendTracker.totalSpend))
+                    LabeledContent("This Month", value: String(format: "$%.4f", model.openRouterSpendTracker.monthlySpend))
+                    Button("Reset Spend", role: .destructive) {
+                        showResetConfirmation = true
+                    }
+                    .alert("Reset Intake Spending?", isPresented: $showResetConfirmation) {
+                        Button("Cancel", role: .cancel) { }
+                        Button("Reset", role: .destructive) {
+                            var tracker = model.openRouterSpendTracker
+                            tracker.resetAll()
+                            model.openRouterSpendTracker = tracker
+                        }
+                    } message: {
+                        Text("This will reset both total and monthly spending to zero.")
                     }
                 }
                 if let status = model.openRouterStatusMessage {
@@ -118,7 +126,6 @@ struct AISettingsView: View {
         .onAppear {
             keyIsSaved = OpenRouterKeychain.hasKey
             otherProviders = OtherAIProviderDetector.scan()
-            spendTracker = OpenRouterSpendTracker.load(from: UserDefaults.standard)
             lookupAccountInfo()
         }
     }

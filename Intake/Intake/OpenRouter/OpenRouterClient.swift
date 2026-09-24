@@ -81,6 +81,16 @@ struct PendingAISuggestion: Identifiable, Equatable, Sendable {
     }
 }
 
+struct FolderSuggestionWithCost: Equatable, Sendable {
+    var suggestion: AIFolderSuggestion
+    var cost: Double?
+
+    nonisolated init(suggestion: AIFolderSuggestion, cost: Double? = nil) {
+        self.suggestion = suggestion
+        self.cost = cost
+    }
+}
+
 /// HTTPS client for OpenRouter chat completions. Lives in the app target so
 /// IntakeCore stays free of network I/O.
 nonisolated enum OpenRouterClient: Sendable {
@@ -90,7 +100,7 @@ nonisolated enum OpenRouterClient: Sendable {
         apiKey: String,
         configuration: OpenRouterConfiguration,
         session: URLSession = .shared
-    ) async -> Result<AIFolderSuggestion, OpenRouterFailure> {
+    ) async -> Result<FolderSuggestionWithCost, OpenRouterFailure> {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else {
             return .failure(.missingKey)
@@ -128,7 +138,8 @@ nonisolated enum OpenRouterClient: Sendable {
             do {
                 let content = try OpenRouterChatParser.messageContent(from: data)
                 let suggestion = try OpenRouterChatParser.folderSuggestion(from: content)
-                return .success(suggestion)
+                let cost = (try? OpenRouterChatParser.usage(from: data))?.cost
+                return .success(FolderSuggestionWithCost(suggestion: suggestion, cost: cost))
             } catch {
                 return .failure(.parse)
             }

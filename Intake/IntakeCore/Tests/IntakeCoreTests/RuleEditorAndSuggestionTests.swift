@@ -500,4 +500,49 @@ struct OpenRouterSpendTrackerTests {
         #expect(tracker.totalSpend == 1.0)
         #expect(tracker.lastResetDate == now)
     }
+
+    @Test
+    func parsingChatCompletionWithCostIncrementsSpendTracker() throws {
+        let payload = """
+        {
+          "choices": [{"message": {"content": "{\\"folder\\":\\"Documents\\",\\"reason\\":\\"PDF\\"}"}}],
+          "usage": {
+            "prompt_tokens": 150,
+            "completion_tokens": 50,
+            "total_cost": 0.001234
+          }
+        }
+        """
+
+        // Parse the usage from response
+        let usage = try OpenRouterChatParser.usage(from: Data(payload.utf8))
+
+        // Add cost to tracker
+        var tracker = OpenRouterSpendTracker()
+        tracker.addCost(usage.cost)
+
+        #expect(tracker.totalSpend == 0.001234)
+        #expect(tracker.monthlySpend == 0.001234)
+
+        // Add another cost
+        tracker.addCost(0.002)
+        #expect(tracker.totalSpend == 0.003234)
+        #expect(tracker.monthlySpend == 0.003234)
+    }
+}
+
+extension OpenRouterSpendTrackerTests {
+    @Test
+    func resetsAllSpendWhenRequested() {
+        var tracker = OpenRouterSpendTracker(
+            totalSpend: 5.0,
+            monthlySpend: 2.0,
+            lastResetDate: Date(timeIntervalSince1970: 0)
+        )
+        let now = Date()
+        tracker.resetAll(now: now)
+        #expect(tracker.totalSpend == 0)
+        #expect(tracker.monthlySpend == 0)
+        #expect(tracker.lastResetDate == now)
+    }
 }

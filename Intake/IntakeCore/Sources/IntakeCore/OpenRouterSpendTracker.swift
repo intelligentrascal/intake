@@ -37,6 +37,13 @@ public struct OpenRouterSpendTracker: Equatable, Sendable {
         lastResetDate = now
     }
 
+    /// Reset both total and monthly spend counters.
+    public mutating func resetAll(now: Date = Date()) {
+        totalSpend = 0
+        monthlySpend = 0
+        lastResetDate = now
+    }
+
     /// Check if the calendar month has changed between two dates.
     private static func hasMonthRolledOver(lastResetDate: Date, now: Date) -> Bool {
         let calendar = Calendar.current
