@@ -6,7 +6,7 @@ struct ActivitySettingsView: View {
             Section {
                 ActivityPaneBody()
             } footer: {
-                Text("Activity is an audit trail, not the Dock default. Open it from the menu bar or General. Double-click a row to reveal it in Finder, or use Reveal in Finder.")
+                Text("Activity is an audit trail, not the Dock default. Open it from the menu bar or General. Double-click a row to reveal it in Finder, or Control-click for Reveal in Finder.")
             }
         }
         .formStyle(.grouped)
@@ -25,7 +25,7 @@ private struct ActivityPaneBody: View {
             )
             .frame(minHeight: 220)
         } else {
-            ActivityListView()
+            ActivityListView(showsRevealToolbarItem: false)
                 .frame(minHeight: 280)
         }
     }

@@ -149,8 +149,29 @@ private struct AISuggestionList: View {
 struct ActivityListView: View {
     @Environment(AppModel.self) private var model
     @State private var selection: ActivityEntry.ID?
+    /// Only the standalone Activity window gets the toolbar Reveal button.
+    /// Embedded in Settings, a toolbar item would add an NSToolbar to the
+    /// Settings window while this pane is shown, growing the titlebar and
+    /// shifting every pane's content on switch. Settings keeps Reveal via
+    /// double-click and the context menu.
+    var showsRevealToolbarItem = true
 
     var body: some View {
+        if showsRevealToolbarItem {
+            list.toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Reveal in Finder") {
+                        model.reveal(selectedEntry?.url)
+                    }
+                    .disabled(selectedEntry?.url == nil)
+                }
+            }
+        } else {
+            list
+        }
+    }
+
+    private var list: some View {
         List(selection: $selection) {
             ForEach(model.filteredActivity) { entry in
                 ActivityRow(entry: entry)
@@ -180,14 +201,6 @@ struct ActivityListView: View {
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Reveal in Finder") {
-                    model.reveal(selectedEntry?.url)
-                }
-                .disabled(selectedEntry?.url == nil)
-            }
-        }
     }
 
     @ViewBuilder
