@@ -27,6 +27,35 @@ enum OpenRouterFailure: Error, Equatable, Sendable {
     }
 }
 
+enum OpenRouterLookupFailure: Error, Equatable, Sendable {
+    case missingKey
+    case badURL
+    case offline
+    case unauthorized(String)
+    case outOfCredit(String)
+    case server(String)
+    case parse
+
+    var userMessage: String {
+        switch self {
+        case .missingKey:
+            "Add an OpenRouter API key to enable lookups."
+        case .badURL:
+            "The OpenRouter base URL isn’t valid."
+        case .offline:
+            "Offline. Intake couldn’t reach OpenRouter."
+        case .unauthorized(let message):
+            message
+        case .outOfCredit(let message):
+            message
+        case .server(let message):
+            message
+        case .parse:
+            "OpenRouter returned a response Intake couldn’t read."
+        }
+    }
+}
+
 struct PendingAISuggestion: Identifiable, Equatable, Sendable {
     var id: UUID
     var fileName: String
@@ -100,6 +129,98 @@ nonisolated enum OpenRouterClient: Sendable {
                 let content = try OpenRouterChatParser.messageContent(from: data)
                 let suggestion = try OpenRouterChatParser.folderSuggestion(from: content)
                 return .success(suggestion)
+            } catch {
+                return .failure(.parse)
+            }
+        } catch {
+            return .failure(.offline)
+        }
+    }
+
+    static func fetchKeyInfo(
+        apiKey: String,
+        baseURL: String,
+        session: URLSession = .shared
+    ) async -> Result<OpenRouterKeyInfo, OpenRouterLookupFailure> {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            return .failure(.missingKey)
+        }
+        guard let url = OpenRouterRequestBuilder.keyInfoURL(baseURL: baseURL) else {
+            return .failure(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Intake", forHTTPHeaderField: "X-Title")
+        request.setValue(
+            "https://github.com/intelligentrascal/intake",
+            forHTTPHeaderField: "HTTP-Referer"
+        )
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 401 {
+                return .failure(.unauthorized(OpenRouterChatParser.httpErrorMessage(statusCode: 401)))
+            }
+            if status == 402 {
+                return .failure(.outOfCredit(OpenRouterChatParser.httpErrorMessage(statusCode: 402)))
+            }
+            if !(200...299).contains(status) {
+                return .failure(.server(OpenRouterChatParser.httpErrorMessage(statusCode: status)))
+            }
+            do {
+                let info = try OpenRouterKeyInfoParser.keyInfo(from: data)
+                return .success(info)
+            } catch {
+                return .failure(.parse)
+            }
+        } catch {
+            return .failure(.offline)
+        }
+    }
+
+    static func fetchCreditsInfo(
+        apiKey: String,
+        baseURL: String,
+        session: URLSession = .shared
+    ) async -> Result<OpenRouterCreditsInfo, OpenRouterLookupFailure> {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            return .failure(.missingKey)
+        }
+        guard let url = OpenRouterRequestBuilder.creditsURL(baseURL: baseURL) else {
+            return .failure(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Intake", forHTTPHeaderField: "X-Title")
+        request.setValue(
+            "https://github.com/intelligentrascal/intake",
+            forHTTPHeaderField: "HTTP-Referer"
+        )
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 401 {
+                return .failure(.unauthorized(OpenRouterChatParser.httpErrorMessage(statusCode: 401)))
+            }
+            if status == 402 {
+                return .failure(.outOfCredit(OpenRouterChatParser.httpErrorMessage(statusCode: 402)))
+            }
+            if !(200...299).contains(status) {
+                return .failure(.server(OpenRouterChatParser.httpErrorMessage(statusCode: status)))
+            }
+            do {
+                let info = try OpenRouterCreditsParser.creditsInfo(from: data)
+                return .success(info)
             } catch {
                 return .failure(.parse)
             }
