@@ -93,6 +93,24 @@ final class AppModel {
         didSet { UserDefaults.standard.set(aiSuggestionsEnabled, forKey: SettingsKey.aiSuggestions) }
     }
 
+    /// Master toggle for IN-10 Notification digests. Off by default — no
+    /// permission prompt until this is switched on.
+    var notificationsEnabled: Bool {
+        didSet {
+            NotificationPreferences.persistMaster(notificationsEnabled, to: .standard)
+            notificationDigestService.setMasterEnabled(notificationsEnabled)
+        }
+    }
+    var notifyOnFiled: Bool {
+        didSet { NotificationPreferences.persistFiled(notifyOnFiled, to: .standard) }
+    }
+    var notifyOnErrors: Bool {
+        didSet { NotificationPreferences.persistErrors(notifyOnErrors, to: .standard) }
+    }
+    var notifyOnCleanup: Bool {
+        didSet { NotificationPreferences.persistCleanup(notifyOnCleanup, to: .standard) }
+    }
+
     var launchAtLoginEnabled: Bool
     var showsInDock: Bool
     var showsInMenuBar: Bool
@@ -174,6 +192,8 @@ final class AppModel {
     private var organizeCancelRequested = false
     @ObservationIgnored
     private var organizeTask: Task<Void, Never>?
+    @ObservationIgnored
+    private let notificationDigestService = NotificationDigestService()
 
     init() {
         let defaults = UserDefaults.standard
@@ -190,6 +210,10 @@ final class AppModel {
         cleanupThresholdDays = defaults.object(forKey: SettingsKey.cleanupDays) as? Int ?? 30
         includeWatchRootInCleanup = defaults.object(forKey: SettingsKey.includeRoot) as? Bool ?? true
         aiSuggestionsEnabled = defaults.bool(forKey: SettingsKey.aiSuggestions)
+        notificationsEnabled = NotificationPreferences.isMasterEnabled(in: defaults)
+        notifyOnFiled = NotificationPreferences.isFiledEnabled(in: defaults)
+        notifyOnErrors = NotificationPreferences.isErrorsEnabled(in: defaults)
+        notifyOnCleanup = NotificationPreferences.isCleanupEnabled(in: defaults)
         openRouterEnabled = defaults.bool(forKey: SettingsKey.openRouterEnabled)
         openRouterBaseURL = defaults.string(forKey: SettingsKey.openRouterBaseURL)
             ?? OpenRouterConfiguration.defaultBaseURL
@@ -221,6 +245,11 @@ final class AppModel {
         SettingsSplitViewAutosave.resetSettingsSplitFrames()
 
         applyActivationPolicy()
+        notificationDigestService.attach(to: self)
+        // Restores the heartbeat if the user already turned notifications on in
+        // a previous session — never requests authorization at launch for a
+        // freshly-off toggle.
+        notificationDigestService.setMasterEnabled(notificationsEnabled)
         scanCleanupCandidates()
         let firstRun = !UserDefaults.standard.bool(forKey: SettingsKey.didShowMenuBarTip)
         if firstRun {
@@ -1063,6 +1092,9 @@ final class AppModel {
             mountedVolumeURLs: mountedVolumeURLs(),
             packageReceiptResolver: cleanupPackageReceiptResolver
         ).candidates()
+        if notificationsEnabled && notifyOnCleanup {
+            notificationDigestService.noteCleanupScan(cleanupCandidates)
+        }
     }
 
     /// Currently mounted volumes, for skipping installers whose disk image
@@ -1163,6 +1195,7 @@ final class AppModel {
             persistUndoStack()
             presentUndoToast(for: [action], filed: false)
         }
+        notifyDigest(of: [entry])
     }
 
     /// Record organized ingest entries. Preserves Activity newest-first order while
@@ -1183,6 +1216,27 @@ final class AppModel {
             persistUndoStack()
             let filed = pushed.contains { $0.kind == .rename } && pushed.contains { $0.kind == .move }
             presentUndoToast(for: pushed, filed: filed)
+        }
+        notifyDigest(of: entries)
+    }
+
+    /// Feeds newly-recorded Activity entries to the notification batcher.
+    /// Only Filed (moved) and Error entries are digest-worthy; everything else
+    /// (skipped, deleted, folder-removed, plain renames) is left out here —
+    /// rename-only entries stay out of the Filed digest by default.
+    private func notifyDigest(of entries: [ActivityEntry]) {
+        guard notificationsEnabled else { return }
+        for entry in entries {
+            switch entry.kind {
+            case .moved:
+                guard notifyOnFiled else { continue }
+                notificationDigestService.noteFiled(entry)
+            case .error:
+                guard notifyOnErrors else { continue }
+                notificationDigestService.noteError(entry)
+            case .renamed, .skipped, .deleted, .folderRemoved:
+                continue
+            }
         }
     }
 

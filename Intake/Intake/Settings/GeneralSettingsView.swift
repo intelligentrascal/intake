@@ -92,6 +92,34 @@ struct GeneralSettingsView: View {
             }
             Section {
                 Toggle(
+                    "Notifications",
+                    isOn: Binding(
+                        get: { model.notificationsEnabled },
+                        set: { model.notificationsEnabled = $0 }
+                    )
+                )
+                Toggle("Filed", isOn: Binding(
+                    get: { model.notifyOnFiled },
+                    set: { model.notifyOnFiled = $0 }
+                ))
+                .disabled(!model.notificationsEnabled)
+                Toggle("Errors", isOn: Binding(
+                    get: { model.notifyOnErrors },
+                    set: { model.notifyOnErrors = $0 }
+                ))
+                .disabled(!model.notificationsEnabled)
+                Toggle("Cleanup", isOn: Binding(
+                    get: { model.notifyOnCleanup },
+                    set: { model.notifyOnCleanup = $0 }
+                ))
+                .disabled(!model.notificationsEnabled)
+            } header: {
+                Text("Notifications")
+            } footer: {
+                Text("Off by default. When on, Intake asks for notification permission and sends a digest for what it filed, any errors, and new Cleanup items — never one notification per file. Errors are sent on their own, at most once a minute. Focus and system notification settings still apply.")
+            }
+            Section {
+                Toggle(
                     "Show in Dock",
                     isOn: Binding(
                         get: { model.showsInDock },
