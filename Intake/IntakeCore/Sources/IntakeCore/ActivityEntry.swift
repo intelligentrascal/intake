@@ -10,6 +10,14 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         case folderRemoved
     }
 
+    /// Which namer produced a `renamed` row.
+    public enum RenameSource: String, Sendable, Equatable, Codable {
+        /// The local, deterministic `FileNameNormalizer` (Title Case).
+        case titleCase
+        /// The on-device content-aware namer (template + validator).
+        case contentAware
+    }
+
     public var id: UUID
     public var date: Date
     public var kind: Kind
@@ -27,6 +35,8 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
     /// The watch folder profile this change came from. Optional: rows written
     /// before multiple watch folders have none and count as profile #1.
     public var watchFolderID: String?
+    /// For `renamed` rows: who picked the name. Optional — older rows have none.
+    public var renameSource: RenameSource?
 
     /// `watchFolderID`, with older rows defaulting to profile #1.
     public var effectiveWatchFolderID: String {
@@ -70,7 +80,8 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         beforePath: String? = nil,
         afterPath: String? = nil,
         sourceDomain: String? = nil,
-        watchFolderID: String? = nil
+        watchFolderID: String? = nil,
+        renameSource: RenameSource? = nil
     ) {
         self.id = id
         self.date = date
@@ -83,5 +94,6 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         self.afterPath = afterPath
         self.sourceDomain = sourceDomain
         self.watchFolderID = watchFolderID
+        self.renameSource = renameSource
     }
 }
