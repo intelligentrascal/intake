@@ -25,11 +25,11 @@ struct AISettingsView: View {
             Section {
                 Toggle("Suggest names and folders with AI", isOn: $model.aiSuggestionsEnabled)
             } footer: {
-                Text("Off by default. Core organizing uses extension rules only. Suggestions send a file’s name and extension to your provider — never its contents.")
+                Text("Off by default. Core organizing uses extension rules only. Folder suggestions send a file’s name and extension to your provider — never its contents. Content-aware rename has its own provider setting above.")
             }
             Section {
                 Toggle("Enable OpenRouter", isOn: $model.openRouterEnabled)
-                    .disabled(!model.aiSuggestionsEnabled)
+                    .disabled(!model.aiSuggestionsEnabled && !(model.contentAwareRename.isEnabled && model.contentAwareRename.provider == .openRouter))
                 SecureField(
                     keyIsSaved ? "Key saved in Keychain" : "API key",
                     text: $apiKeyDraft
@@ -136,14 +136,20 @@ struct AISettingsView: View {
         }
     }
 
-    // MARK: Content-aware rename (on-device)
+    // MARK: Content-aware rename
 
     @ViewBuilder
     private var contentAwareSection: some View {
         @Bindable var model = model
         Section {
             Toggle("Rename files from their contents", isOn: $model.contentAwareRename.isEnabled)
-            if let message = model.contentAwareAvailability.message {
+            Picker("Naming provider", selection: $model.contentAwareRename.provider) {
+                ForEach(ContentAwareRenameProvider.allCases) { provider in
+                    Text(provider.title).tag(provider)
+                }
+            }
+            .disabled(!model.contentAwareRename.isEnabled)
+            if let message = contentAwareAvailabilityMessage {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(IntakeColor.warning)
                     .font(.callout)
@@ -173,7 +179,21 @@ struct AISettingsView: View {
         } header: {
             Text("Content-aware rename")
         } footer: {
-            Text("Off by default. Intake reads the text of PDFs and images with Apple’s on-device model — file contents never leave this Mac. A name like “2026-09-14 Invoice Acme” is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity.")
+            Text(contentAwareFooter)
+        }
+    }
+
+    private var contentAwareAvailabilityMessage: String? {
+        guard model.contentAwareRename.isEnabled else { return nil }
+        return model.contentAwareProviderBlockMessage()
+    }
+
+    private var contentAwareFooter: String {
+        switch model.contentAwareRename.provider {
+        case .onDevice:
+            return "Off by default. Intake reads PDFs and images on this Mac with Apple’s on-device model — file contents never leave this Mac. A name like “2026-09-14 Invoice Acme” is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity."
+        case .openRouter:
+            return "Off by default. Intake reads PDFs and images on this Mac, then sends that extracted text to OpenRouter to propose a name — contents leave this Mac when OpenRouter is the naming provider. Requires OpenRouter enabled and an API key below. A name is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity."
         }
     }
 
@@ -196,7 +216,9 @@ struct AISettingsView: View {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.pdf, .image]
         panel.prompt = "Try"
-        panel.message = "Intake reads this file on your Mac and shows the name it would use. Nothing is renamed."
+        panel.message = model.contentAwareRename.provider == .openRouter
+            ? "Intake reads this file on your Mac, sends the extracted text to OpenRouter, and shows the name it would use. Nothing is renamed."
+            : "Intake reads this file on your Mac and shows the name it would use. Nothing is renamed."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         isTrying = true
         trialResult = nil

@@ -23,7 +23,7 @@
 2. Rules — editable taxonomy, drag order, custom rules, on-device suggestions
 3. Cleanup — duration threshold, include roots, decision queue
 4. Activity — audit trail of ingest and cleanup (open the dedicated window from here or the menu)
-5. AI — **Content-aware rename** section first (on-device, off by default: toggle, PDFs / Images toggles, Name template field with a token caption, **Try on a File…** with inline result, warning-colored availability message when the on-device model can't run); then suggestions off by default; OpenRouter is the first real provider (Keychain key)
+5. AI — **Content-aware rename** section first (off by default: toggle, naming provider picker On this Mac | OpenRouter, PDFs / Images toggles, Name template field with a token caption, **Try on a File…** with inline result, warning-colored availability message when the selected provider can't run; footer copy differs by provider); then suggestions off by default; OpenRouter is the first real provider (Keychain key)
 6. About — license, links
 
 ### Watch folders

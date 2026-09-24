@@ -427,6 +427,49 @@ struct OpenRouterSuggestionTests {
     }
 
     @Test
+    func buildsContentNamingBodyWithExtractedText() throws {
+        let body = try OpenRouterRequestBuilder.contentNamingBody(
+            model: "openai/gpt-4o-mini",
+            fileName: "scan.pdf",
+            fileExtension: "pdf",
+            text: "INVOICE Acme Corp Total $12.00"
+        )
+        let json = String(decoding: body, as: UTF8.self)
+        #expect(json.contains("scan.pdf"))
+        #expect(json.contains("INVOICE Acme Corp"))
+        #expect(json.contains("documentType"))
+        #expect(json.contains("\"usage\""))
+    }
+
+    @Test
+    func parsesContentNamingFields() throws {
+        let content = """
+        {"date":"2026-09-14","documentType":"Invoice","organization":"Acme","subject":"September services","confidence":0.91}
+        """
+        let fields = try OpenRouterChatParser.contentNamingFields(from: content)
+        #expect(fields.date == "2026-09-14")
+        #expect(fields.documentType == "Invoice")
+        #expect(fields.organization == "Acme")
+        #expect(fields.subject == "September services")
+        #expect(fields.confidence == 0.91)
+    }
+
+    @Test
+    func parsesContentNamingFieldsFromFencedJSON() throws {
+        let content = """
+        ```json
+        {"date":"","documentType":"Receipt","organization":"Cafe","subject":"","confidence":0.7}
+        ```
+        """
+        let fields = try OpenRouterChatParser.contentNamingFields(from: content)
+        #expect(fields.date == nil)
+        #expect(fields.documentType == "Receipt")
+        #expect(fields.organization == "Cafe")
+        #expect(fields.subject == nil)
+        #expect(fields.confidence == 0.7)
+    }
+
+    @Test
     func providesFriendlyError401And402Messages() {
         let msg401 = OpenRouterChatParser.httpErrorMessage(statusCode: 401)
         #expect(msg401.contains("Invalid"))

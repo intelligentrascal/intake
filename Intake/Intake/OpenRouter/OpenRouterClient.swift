@@ -91,6 +91,17 @@ struct FolderSuggestionWithCost: Equatable, Sendable {
     }
 }
 
+
+struct ContentNamingFieldsWithCost: Equatable, Sendable {
+    var fields: ContentNamingFields
+    var cost: Double?
+
+    nonisolated init(fields: ContentNamingFields, cost: Double? = nil) {
+        self.fields = fields
+        self.cost = cost
+    }
+}
+
 /// HTTPS client for OpenRouter chat completions. Lives in the app target so
 /// IntakeCore stays free of network I/O.
 nonisolated enum OpenRouterClient: Sendable {
@@ -140,6 +151,61 @@ nonisolated enum OpenRouterClient: Sendable {
                 let suggestion = try OpenRouterChatParser.folderSuggestion(from: content)
                 let cost = (try? OpenRouterChatParser.usage(from: data))?.cost
                 return .success(FolderSuggestionWithCost(suggestion: suggestion, cost: cost))
+            } catch {
+                return .failure(.parse)
+            }
+        } catch {
+            return .failure(.offline)
+        }
+    }
+
+
+    static func suggestContentFields(
+        input: ContentNamingInput,
+        apiKey: String,
+        configuration: OpenRouterConfiguration,
+        session: URLSession = .shared
+    ) async -> Result<ContentNamingFieldsWithCost, OpenRouterFailure> {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            return .failure(.missingKey)
+        }
+        guard let url = OpenRouterRequestBuilder.chatCompletionsURL(baseURL: configuration.baseURL) else {
+            return .failure(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Intake", forHTTPHeaderField: "X-Title")
+        request.setValue(
+            "https://github.com/intelligentrascal/intake",
+            forHTTPHeaderField: "HTTP-Referer"
+        )
+        do {
+            request.httpBody = try OpenRouterRequestBuilder.contentNamingBody(
+                model: configuration.model,
+                fileName: input.facts.name,
+                fileExtension: input.facts.fileExtension,
+                text: input.text
+            )
+        } catch {
+            return .failure(.parse)
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 401 || status == 403 || status == 429 || !(200...299).contains(status) {
+                return .failure(.server(OpenRouterChatParser.httpErrorMessage(statusCode: status)))
+            }
+            do {
+                let content = try OpenRouterChatParser.messageContent(from: data)
+                let fields = try OpenRouterChatParser.contentNamingFields(from: content)
+                let cost = (try? OpenRouterChatParser.usage(from: data))?.cost
+                return .success(ContentNamingFieldsWithCost(fields: fields, cost: cost))
             } catch {
                 return .failure(.parse)
             }

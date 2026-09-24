@@ -220,6 +220,31 @@ struct ContentAwareRenameSettingsTests {
         custom.save(to: defaults)
         #expect(ContentAwareRenameSettings.load(from: defaults) == custom)
     }
+
+    @Test
+    func providerDefaultsToOnDeviceAndRoundTrips() {
+        let suite = "intake.tests.content-aware.provider.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        #expect(ContentAwareRenameSettings.load(from: defaults).provider == .onDevice)
+
+        let openRouter = ContentAwareRenameSettings(
+            isEnabled: true,
+            provider: .openRouter,
+            fileTypes: [.pdf],
+            template: "{date} {type}"
+        )
+        openRouter.save(to: defaults)
+        let loaded = ContentAwareRenameSettings.load(from: defaults)
+        #expect(loaded.provider == .openRouter)
+        #expect(loaded.isEnabled)
+        #expect(loaded.fileTypes == [.pdf])
+
+        // Legacy JSON without provider key stays on-device.
+        let legacy = #"{"isEnabled":true,"fileTypes":["pdf"],"template":"{date}"}"#.data(using: .utf8)!
+        defaults.set(legacy, forKey: ContentAwareRenameSettings.defaultsKey)
+        #expect(ContentAwareRenameSettings.load(from: defaults).provider == .onDevice)
+    }
 }
 
 // MARK: Renamer (extract → name → validate)

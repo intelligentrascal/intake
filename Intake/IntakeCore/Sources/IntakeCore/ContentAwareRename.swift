@@ -24,7 +24,25 @@ public enum ContentAwareFileType: String, CaseIterable, Codable, Sendable, Ident
     }
 }
 
-/// Settings for on-device content-aware rename. Off by default.
+
+/// Where content-aware rename gets document fields from. Text is always
+/// extracted on this Mac; only the OpenRouter provider sends that text
+/// off-device.
+public enum ContentAwareRenameProvider: String, CaseIterable, Codable, Sendable, Identifiable {
+    case onDevice
+    case openRouter
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .onDevice: "On this Mac"
+        case .openRouter: "OpenRouter"
+        }
+    }
+}
+
+/// Settings for content-aware rename. Off by default.
 public struct ContentAwareRenameSettings: Equatable, Codable, Sendable {
     public static let defaultsKey = "intake.contentAwareRename"
     /// How long filing waits for a content name before using the Title Case one.
@@ -33,15 +51,18 @@ public struct ContentAwareRenameSettings: Equatable, Codable, Sendable {
     public static let maximumFileSize: Int64 = 50 * 1024 * 1024
 
     public var isEnabled: Bool
+    public var provider: ContentAwareRenameProvider
     public var fileTypes: Set<ContentAwareFileType>
     public var template: String
 
     public init(
         isEnabled: Bool = false,
+        provider: ContentAwareRenameProvider = .onDevice,
         fileTypes: Set<ContentAwareFileType> = [.pdf, .images],
         template: String = ContentNameTemplate.defaultTemplate
     ) {
         self.isEnabled = isEnabled
+        self.provider = provider
         self.fileTypes = fileTypes
         self.template = template
     }
@@ -58,12 +79,13 @@ public struct ContentAwareRenameSettings: Equatable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, fileTypes, template
+        case isEnabled, provider, fileTypes, template
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        provider = try container.decodeIfPresent(ContentAwareRenameProvider.self, forKey: .provider) ?? .onDevice
         let rawTypes = try container.decodeIfPresent([String].self, forKey: .fileTypes)
         fileTypes = rawTypes.map { Set($0.compactMap(ContentAwareFileType.init(rawValue:))) }
             ?? [.pdf, .images]
@@ -74,6 +96,7 @@ public struct ContentAwareRenameSettings: Equatable, Codable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(provider, forKey: .provider)
         try container.encode(fileTypes.map(\.rawValue).sorted(), forKey: .fileTypes)
         try container.encode(template, forKey: .template)
     }
@@ -325,8 +348,8 @@ extension ContentNameFallback {
         case .tooLarge: "The file is larger than 50 MB, so Intake doesn’t read it."
         case .unreadable: "The file is empty or missing."
         case .noText: "No readable text was found (encrypted PDFs are skipped)."
-        case .rejected(.noResult): "The on-device model didn’t return a name."
-        case .rejected(.lowConfidence): "The on-device model wasn’t confident enough."
+        case .rejected(.noResult): "The naming model didn’t return a name."
+        case .rejected(.lowConfidence): "The naming model wasn’t confident enough."
         case .rejected(.empty): "The template came out empty for this file."
         case .rejected(.generic): "The result was too generic to be useful."
         }

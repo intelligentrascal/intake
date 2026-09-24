@@ -158,7 +158,7 @@ final class AppModel {
     var organizeTargetProfileID: String?
     /// True while the preview is reading eligible files for content-aware names.
     var organizeReadingContents = false
-    /// On-device content-aware rename (GH-32). Off by default.
+    /// Content-aware rename (GH-32). Off by default; provider is on-device or OpenRouter.
     var contentAwareRename: ContentAwareRenameSettings {
         didSet { contentAwareRename.save(to: .standard) }
     }
@@ -750,32 +750,76 @@ final class AppModel {
     /// Title Case names.
     static let organizeContentAwareLimit = 40
 
-    /// The content-aware renamer when the feature is on and the on-device
-    /// model can run on this Mac; `nil` otherwise (files keep Title Case).
+    /// The content-aware renamer when the feature is on and the selected
+    /// provider can run; `nil` otherwise (files keep Title Case).
     func contentAwareRenamer() -> ContentAwareRenamer? {
         guard contentAwareRename.isEnabled else { return nil }
-        contentAwareAvailability = .current
-        guard contentAwareAvailability.isAvailable else { return nil }
+        guard let namer = makeContentAwareNamer() else { return nil }
         return ContentAwareRenamer(
             settings: contentAwareRename,
             extractor: OnDeviceTextExtractor(),
-            namer: FoundationModelsContentNamer()
+            namer: namer
         )
+    }
+
+    /// Provider-specific reason content-aware rename cannot run right now.
+    /// `nil` means the selected provider is ready.
+    func contentAwareProviderBlockMessage() -> String? {
+        switch contentAwareRename.provider {
+        case .onDevice:
+            contentAwareAvailability = .current
+            return contentAwareAvailability.message
+        case .openRouter:
+            if !openRouterEnabled {
+                return "Turn on OpenRouter below to rename files from their contents with OpenRouter."
+            }
+            if !OpenRouterKeychain.hasKey {
+                return "Save an OpenRouter API key below to rename files from their contents."
+            }
+            return nil
+        }
+    }
+
+    /// Builds the `ContentNamer` for the selected provider, or `nil` when that
+    /// provider isn’t ready.
+    func makeContentAwareNamer() -> (any ContentNamer)? {
+        switch contentAwareRename.provider {
+        case .onDevice:
+            contentAwareAvailability = .current
+            guard contentAwareAvailability.isAvailable else { return nil }
+            return FoundationModelsContentNamer()
+        case .openRouter:
+            guard openRouterEnabled, let key = OpenRouterKeychain.load() else { return nil }
+            let configuration = openRouterConfiguration
+            return OpenRouterContentNamer(
+                apiKey: key,
+                configuration: configuration,
+                onCost: { [weak self] cost in
+                    guard cost > 0 else { return }
+                    Task { @MainActor in
+                        self?.openRouterSpendTracker.addCost(cost)
+                    }
+                }
+            )
+        }
     }
 
     /// "Try on a file…": what content-aware rename would call `url`, without
     /// renaming anything. Runs even while the master toggle is off.
     func tryContentAwareName(for url: URL) async -> String {
-        contentAwareAvailability = .current
-        if let message = contentAwareAvailability.message {
+        if let message = contentAwareProviderBlockMessage() {
             return message
+        }
+        guard let namer = makeContentAwareNamer() else {
+            return contentAwareProviderBlockMessage()
+                ?? "Content-aware rename isn’t available right now."
         }
         var settings = contentAwareRename
         settings.isEnabled = true
         let renamer = ContentAwareRenamer(
             settings: settings,
             extractor: OnDeviceTextExtractor(),
-            namer: FoundationModelsContentNamer()
+            namer: namer
         )
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
