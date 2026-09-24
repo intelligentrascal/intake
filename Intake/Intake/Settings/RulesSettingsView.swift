@@ -5,6 +5,8 @@ struct RulesSettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var editor: RuleEditorItem?
     @State private var selectedRuleID: RoutingRule.ID?
+    @State private var pendingDeleteRule: RoutingRule?
+    @State private var pendingResetRule: RoutingRule?
 
     var body: some View {
         Form {
@@ -42,16 +44,21 @@ struct RulesSettingsView: View {
                                 Button("Edit…") {
                                     editor = .edit(rule)
                                 }
+                                Button("Move Up") {
+                                    moveRule(rule, up: true)
+                                }
+                                .disabled(!canMove(rule, up: true))
+                                Button("Move Down") {
+                                    moveRule(rule, up: false)
+                                }
+                                .disabled(!canMove(rule, up: false))
                                 if rule.isBuiltIn {
                                     Button("Reset to Default") {
-                                        model.resetBuiltInRule(id: rule.id)
+                                        pendingResetRule = rule
                                     }
                                 } else {
                                     Button("Delete", role: .destructive) {
-                                        model.deleteCustomRule(id: rule.id)
-                                        if selectedRuleID == rule.id {
-                                            selectedRuleID = nil
-                                        }
+                                        pendingDeleteRule = rule
                                     }
                                 }
                             }
@@ -62,6 +69,39 @@ struct RulesSettingsView: View {
                 }
                 .listStyle(.inset)
                 .frame(minHeight: 280)
+                // Hidden shortcut buttons: SwiftUI only registers keyboardShortcut as a
+                // system-wide key equivalent when the button is present in the view tree,
+                // not only while its context menu is open.
+                .background {
+                    Group {
+                        Button("Delete Rule") {
+                            if let rule = selectedRule, !rule.isBuiltIn {
+                                pendingDeleteRule = rule
+                            }
+                        }
+                        .keyboardShortcut(.delete, modifiers: .command)
+                        .focusable(false)
+                        Button("Move Rule Up") {
+                            if let rule = selectedRule {
+                                moveRule(rule, up: true)
+                            }
+                        }
+                        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                        .focusable(false)
+                        Button("Move Rule Down") {
+                            if let rule = selectedRule {
+                                moveRule(rule, up: false)
+                            }
+                        }
+                        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                        .focusable(false)
+                    }
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+                    .clipped()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
                 HStack {
                     Button("Add Rule…") {
                         editor = .add
@@ -74,21 +114,20 @@ struct RulesSettingsView: View {
                     .disabled(selectedRule == nil)
                     if let rule = selectedRule, rule.isBuiltIn {
                         Button("Reset to Default") {
-                            model.resetBuiltInRule(id: rule.id)
+                            pendingResetRule = rule
                         }
                     }
                     if let rule = selectedRule, !rule.isBuiltIn {
                         Button("Delete", role: .destructive) {
-                            model.deleteCustomRule(id: rule.id)
-                            selectedRuleID = nil
+                            pendingDeleteRule = rule
                         }
                     }
                     Spacer()
                 }
             } header: {
-                Text("Default taxonomy")
+                Text("Filing rules")
             } footer: {
-                Text("Rules match by file extension. Folders appear only when a file is routed there. Drag to change order — first match wins. Unmatched types go to Other, and only if something lands there.")
+                Text("Each rule can match a file's type, name, source, or size; scoped rules only apply within their chosen watch folders. Drag to change order — the first enabled match wins. Unmatched files go to Other.")
             }
         }
         .formStyle(.grouped)
@@ -98,6 +137,75 @@ struct RulesSettingsView: View {
         .sheet(item: $editor) { item in
             RuleEditorSheet(item: item)
                 .environment(model)
+        }
+        .confirmationDialog(
+            deleteConfirmationTitle,
+            isPresented: Binding(
+                get: { pendingDeleteRule != nil },
+                set: { if !$0 { pendingDeleteRule = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let rule = pendingDeleteRule {
+                    model.deleteCustomRule(id: rule.id)
+                    if selectedRuleID == rule.id {
+                        selectedRuleID = nil
+                    }
+                }
+                pendingDeleteRule = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDeleteRule = nil
+            }
+        } message: {
+            Text("This can't be undone.")
+        }
+        .confirmationDialog(
+            resetConfirmationTitle,
+            isPresented: Binding(
+                get: { pendingResetRule != nil },
+                set: { if !$0 { pendingResetRule = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Reset to Default", role: .destructive) {
+                if let rule = pendingResetRule {
+                    model.resetBuiltInRule(id: rule.id)
+                }
+                pendingResetRule = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingResetRule = nil
+            }
+        } message: {
+            Text("Any changes you made to this rule will be discarded.")
+        }
+    }
+
+    private var deleteConfirmationTitle: String {
+        guard let rule = pendingDeleteRule else { return "Delete rule?" }
+        return "Delete “\(rule.folderName)”?"
+    }
+
+    private var resetConfirmationTitle: String {
+        guard let rule = pendingResetRule else { return "Reset rule to default?" }
+        return "Reset “\(rule.folderName)” to default?"
+    }
+
+    private func canMove(_ rule: RoutingRule, up: Bool) -> Bool {
+        guard let index = model.rules.firstIndex(where: { $0.id == rule.id }) else { return false }
+        return up ? index > 0 : index < model.rules.count - 1
+    }
+
+    private func moveRule(_ rule: RoutingRule, up: Bool) {
+        guard let index = model.rules.firstIndex(where: { $0.id == rule.id }) else { return }
+        if up {
+            guard index > 0 else { return }
+            model.moveRules(from: IndexSet(integer: index), to: index - 1)
+        } else {
+            guard index < model.rules.count - 1 else { return }
+            model.moveRules(from: IndexSet(integer: index), to: index + 2)
         }
     }
 
@@ -148,6 +256,7 @@ private struct RuleRowView: View {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .frame(width: 28)
+                .accessibilityLabel("Enabled")
             Label(rule.folderName, systemImage: rule.systemImage)
                 .frame(minWidth: 140, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
@@ -166,10 +275,26 @@ private struct RuleRowView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
         }
         .frame(minHeight: 28)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(rule.folderName), \(rule.extensionsDisplay), \(conditionsSummary)")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(rule.folderName)
+        .accessibilityValue(accessibilitySummary)
+    }
+
+    /// Read after the row's name: destination, match criteria, enabled state, and scope,
+    /// while leaving the Enabled checkbox itself reachable and independently operable.
+    private var accessibilitySummary: String {
+        var parts = [rule.extensions.isEmpty ? "Any type" : rule.extensionsDisplay]
+        if !rule.conditions.isEmpty {
+            parts.append(conditionsSummary)
+        }
+        if let scopeSummary {
+            parts.append(scopeSummary)
+        }
+        parts.append(rule.isEnabled ? "Enabled" : "Disabled")
+        return parts.joined(separator: ", ")
     }
 
     private var conditionsSummary: String {
@@ -214,8 +339,7 @@ private struct SuggestionRowView: View {
             .buttonStyle(.borderless)
         }
         .frame(minHeight: 44)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(suggestion.title). \(suggestion.subtitle)")
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -299,7 +423,7 @@ struct RuleEditorSheet: View {
                 }
             }
         }
-        .frame(minWidth: 480, minHeight: 320)
+        .frame(minWidth: 480, minHeight: 420)
     }
 
     @ViewBuilder
@@ -439,12 +563,13 @@ private struct ConditionEditorRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Picker("", selection: kindBinding) {
+            Picker("Condition", selection: kindBinding) {
                 ForEach(RuleCondition.Kind.allCases, id: \.self) { kind in
                     Text(kind.label).tag(kind)
                 }
             }
             .labelsHidden()
+            .accessibilityLabel("Condition")
             .frame(width: 160)
             valueField
         }

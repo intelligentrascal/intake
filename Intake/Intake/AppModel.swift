@@ -1133,7 +1133,11 @@ final class AppModel {
     }
 
     var openRouterConfiguration: OpenRouterConfiguration {
-        OpenRouterConfiguration(baseURL: openRouterBaseURL, model: openRouterModel)
+        let trimmedModel = openRouterModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return OpenRouterConfiguration(
+            baseURL: openRouterBaseURL,
+            model: trimmedModel.isEmpty ? OpenRouterConfiguration.defaultModel : trimmedModel
+        )
     }
 
     var canCallOpenRouter: Bool {
@@ -1386,6 +1390,101 @@ final class AppModel {
                     watchFolderID: profileID
                 )
                 controller?.pruneEmptyManagedFolders()
+                self.scanCleanupCandidates()
+            }
+        }
+    }
+
+    /// Files away a whole Cleanup selection into one destination, chosen once.
+    func fileAway(_ candidates: [CleanupCandidate]) {
+        guard let anchor = candidates.first,
+              let anchorController = cleanupController(for: anchor),
+              let directory = DestinationFolderPicker.present(startingAt: anchorController.folder)
+        else {
+            return
+        }
+        var touchedControllers: Set<String> = []
+        for candidate in candidates {
+            guard let controller = cleanupController(for: candidate) else { continue }
+            do {
+                let entry = try CleanupProcessor(
+                    watchFolder: controller.folder,
+                    managedFolderNames: controller.managedFolderNames
+                ).fileAway(candidate, to: directory)
+                record(entry, watchFolderID: controller.profileID)
+                touchedControllers.insert(controller.profileID)
+            } catch {
+                record(
+                    ActivityEntry(
+                        kind: .error,
+                        detail: "Could not file away \(candidate.url.lastPathComponent): \(error.localizedDescription)",
+                        url: candidate.url,
+                        fileName: candidate.url.lastPathComponent
+                    ),
+                    watchFolderID: controller.profileID
+                )
+            }
+        }
+        for controller in watchFolderControllers where touchedControllers.contains(controller.profileID) {
+            controller.pruneEmptyManagedFolders()
+        }
+        scanCleanupCandidates()
+    }
+
+    /// Snoozes a whole Cleanup selection.
+    func keep(_ candidates: [CleanupCandidate]) {
+        var next = snoozedUntil
+        for candidate in candidates {
+            next[CleanupScanner.snoozeKey(for: candidate.url)] = CleanupScanner(
+                watchFolder: cleanupController(for: candidate)?.folder ?? candidate.url.deletingLastPathComponent(),
+                thresholdDays: cleanupThresholdDays,
+                includeWatchRoot: includeWatchRootInCleanup,
+                snoozedUntil: snoozedUntil
+            ).snoozeDate()
+        }
+        snoozedUntil = next
+        scanCleanupCandidates()
+    }
+
+    /// Moves a whole Cleanup selection to Trash in one Finder operation.
+    func delete(_ candidates: [CleanupCandidate]) {
+        let controllersByURL = Dictionary(
+            uniqueKeysWithValues: candidates.map { ($0.url, cleanupController(for: $0)) }
+        )
+        let urls = candidates.map(\.url)
+        NSWorkspace.shared.recycle(urls) { [weak self] trashedURLs, error in
+            Task { @MainActor in
+                guard let self else { return }
+                var touched: Set<String> = []
+                for candidate in candidates {
+                    let controller = controllersByURL[candidate.url].flatMap { $0 }
+                    if trashedURLs[candidate.url] != nil {
+                        self.record(
+                            ActivityEntry(
+                                kind: .deleted,
+                                detail: "Deleted \(candidate.url.lastPathComponent)",
+                                fileName: candidate.url.lastPathComponent
+                            ),
+                            watchFolderID: controller?.profileID
+                        )
+                        if let id = controller?.profileID {
+                            touched.insert(id)
+                        }
+                    } else {
+                        self.record(
+                            ActivityEntry(
+                                kind: .error,
+                                detail: "Could not delete \(candidate.url.lastPathComponent): \(error?.localizedDescription ?? "Unknown error")",
+                                url: candidate.url,
+                                fileName: candidate.url.lastPathComponent
+                            ),
+                            watchFolderID: controller?.profileID
+                        )
+                    }
+                }
+                for controller in self.watchFolderControllers where touched.contains(controller.profileID) {
+                    controller.pruneEmptyManagedFolders()
+                }
                 self.scanCleanupCandidates()
             }
         }

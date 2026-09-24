@@ -32,6 +32,9 @@ struct SettingsRootView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
+        .overlay(alignment: .topLeading) {
+            PaneKeyboardShortcuts()
+        }
         .onAppear {
             SettingsSplitViewAutosave.resetSettingsSplitFrames()
         }
@@ -46,21 +49,18 @@ struct SettingsRootView: View {
     }
 }
 
+/// Button-based sidebar. Do NOT swap for `List(selection:)` or
+/// `NavigationSplitView`: under the SwiftUI `Settings` scene neither delivered
+/// clicks (see commits 236e77e, e8577bb). Buttons set the pane directly; the
+/// container carries list semantics for VoiceOver and ↑/↓ for the keyboard.
 private struct SettingsSidebar: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Intake")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.top, 12)
-                .padding(.bottom, 6)
-                .accessibilityAddTraits(.isHeader)
-
             ForEach(SettingsPane.allCases) { pane in
+                let isSelected = model.selectedSettingsPane == pane
                 Button {
                     model.selectedSettingsPane = pane
                 } label: {
@@ -74,18 +74,17 @@ private struct SettingsSidebar: View {
                 .buttonStyle(.plain)
                 .background {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(model.selectedSettingsPane == pane
-                              ? Color.accentColor.opacity(0.18)
-                              : Color.clear)
+                        .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
                 }
                 .foregroundStyle(.primary)
                 .accessibilityLabel(pane.title)
-                .accessibilityAddTraits(model.selectedSettingsPane == pane ? .isSelected : [])
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .accessibilityHint("Show \(pane.title) settings")
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
+        .padding(.top, 12)
         .padding(.bottom, 10)
         .background {
             if reduceTransparency {
@@ -94,8 +93,44 @@ private struct SettingsSidebar: View {
                 Rectangle().fill(.ultraThinMaterial)
             }
         }
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.upArrow) { step(-1) }
+        .onKeyPress(.downArrow) { step(1) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Settings sidebar")
+        .accessibilityLabel("Settings sections")
+    }
+
+    private func step(_ delta: Int) -> KeyPress.Result {
+        let panes = SettingsPane.allCases
+        guard let index = panes.firstIndex(of: model.selectedSettingsPane) else { return .ignored }
+        let next = index + delta
+        guard panes.indices.contains(next) else { return .handled }
+        model.selectedSettingsPane = panes[next]
+        return .handled
+    }
+}
+
+/// Hidden ⌘1…⌘7 shortcuts for jumping straight to a settings pane. Mounted as a
+/// zero-size, invisible, non-hit-testable overlay so the buttons can never sit
+/// above (or catch clicks meant for) real content.
+private struct PaneKeyboardShortcuts: View {
+    @Environment(AppModel.self) private var model
+    private static let keys: [Character] = ["1", "2", "3", "4", "5", "6", "7"]
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(zip(Self.keys, SettingsPane.allCases)), id: \.1) { key, pane in
+                Button("") { model.selectedSettingsPane = pane }
+                    .keyboardShortcut(KeyEquivalent(key), modifiers: .command)
+                    .focusable(false)
+            }
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .clipped()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

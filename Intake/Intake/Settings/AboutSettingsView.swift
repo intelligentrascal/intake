@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import IntakeCore
 
 struct AboutSettingsView: View {
     @Environment(AppModel.self) private var model
@@ -33,13 +34,26 @@ struct AboutSettingsView: View {
                 Text("Links")
             }
             Section {
-                Text("Watching, renaming, and filing stay on this Mac. Rule suggestions are computed on-device from Activity and the watch folder. AI assist is opt-in, off by default, and uses OpenRouter only when you enable it — file contents are not uploaded.")
+                Text(privacyText)
                     .foregroundStyle(.secondary)
             } header: {
                 Text("Privacy")
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Must match what the AI pane actually does: OpenRouter naming sends extracted text off this Mac.
+    private var privacyText: String {
+        let base = "Watching, renaming, and filing stay on this Mac. Rule suggestions are computed on-device from Activity and the watch folder. AI is opt-in and off by default; OpenRouter folder suggestions send only file names."
+        let rename = model.contentAwareRename
+        if rename.isEnabled && rename.provider == .openRouter {
+            return base + " Content-aware rename is set to OpenRouter, so text extracted from your PDFs and images is sent to OpenRouter."
+        }
+        if rename.provider == .openRouter {
+            return base + " Content-aware rename reads files on this Mac; contents leave it only if you turn on content-aware rename, which is set to use OpenRouter."
+        }
+        return base + " Content-aware rename reads files on this Mac; contents leave it only if you choose OpenRouter as the naming provider."
     }
 
     private var versionString: String {

@@ -54,7 +54,7 @@ struct FeedbackSettingsView: View {
                     .textContentType(.emailAddress)
                     .accessibilityLabel("Email optional")
             } footer: {
-                Text("Only if you want a reply. Not required to open a GitHub issue.")
+                Text("Included in the public GitHub issue. Leave blank if you’d rather not share it.")
             }
 
             Section {
