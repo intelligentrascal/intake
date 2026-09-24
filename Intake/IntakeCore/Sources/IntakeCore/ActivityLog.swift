@@ -30,4 +30,68 @@ public enum ActivityLog: Sendable {
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode([ActivityEntry].self, from: data)
     }
+
+    /// Best on-disk URL to reveal for an Activity row.
+    ///
+    /// Rename rows keep the path at rename time. After a later move (or another
+    /// rename), that path is gone and `NSWorkspace.activateFileViewerSelecting`
+    /// silently does nothing. Follow `beforePath` / `afterPath` through newer
+    /// rows until a path that still exists is found.
+    public static func revealURL(
+        for entry: ActivityEntry,
+        in entries: [ActivityEntry],
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> URL? {
+        var visited: Set<UUID> = []
+        return resolveRevealURL(for: entry, in: entries, fileExists: fileExists, visited: &visited)
+    }
+
+    /// Parent folder of the last known path, when the file itself is gone.
+    public static func revealFallbackDirectory(
+        for entry: ActivityEntry,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> URL? {
+        let paths = [entry.afterPath, entry.url?.path, entry.beforePath].compactMap { $0 }
+        for path in paths {
+            let parent = URL(fileURLWithPath: path).deletingLastPathComponent()
+            if fileExists(parent.path) {
+                return parent
+            }
+        }
+        return nil
+    }
+
+    private static func resolveRevealURL(
+        for entry: ActivityEntry,
+        in entries: [ActivityEntry],
+        fileExists: (String) -> Bool,
+        visited: inout Set<UUID>
+    ) -> URL? {
+        guard visited.insert(entry.id).inserted else { return nil }
+
+        let candidates = [entry.url?.path, entry.afterPath, entry.beforePath].compactMap { $0 }
+        for path in candidates where fileExists(path) {
+            return URL(fileURLWithPath: path)
+        }
+
+        // Stale location: a later rename/move may list this path as its beforePath.
+        let anchors = [entry.afterPath, entry.url?.path].compactMap { $0 }
+        for anchor in anchors {
+            if let next = entries.first(where: { other in
+                other.id != entry.id
+                    && other.beforePath == anchor
+                    && (other.kind == .moved || other.kind == .renamed)
+            }) {
+                if let resolved = resolveRevealURL(
+                    for: next,
+                    in: entries,
+                    fileExists: fileExists,
+                    visited: &visited
+                ) {
+                    return resolved
+                }
+            }
+        }
+        return nil
+    }
 }
