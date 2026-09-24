@@ -6,6 +6,9 @@ import IntakeCore
 struct CleanupSettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var thresholdDraft: Int = 1
+    /// False until the draft has been loaded from the model, so the debounce
+    /// never commits the placeholder value.
+    @State private var thresholdDraftLoaded = false
     @FocusState private var thresholdFieldFocused: Bool
 
     var body: some View {
@@ -14,7 +17,7 @@ struct CleanupSettingsView: View {
             Section {
                 if model.hasMultipleWatchFolders {
                     Picker("Watch folder", selection: $model.cleanupFolderScope) {
-                        Text("All Folders").tag(String?.none)
+                        Text("All Watch Folders").tag(String?.none)
                         Divider()
                         ForEach(model.watchFolderProfiles) { profile in
                             Text(profile.displayName).tag(Optional(profile.id))
@@ -22,31 +25,53 @@ struct CleanupSettingsView: View {
                     }
                     .pickerStyle(.menu)
                 }
-                HStack {
-                    Stepper(value: $model.cleanupThresholdDays, in: 1...365) {
-                        Text("Unused for \(model.cleanupThresholdDays) days")
-                    }
-                    Spacer()
-                    TextField(
-                        "Days",
-                        value: $thresholdDraft,
-                        format: .number
-                    )
-                    .labelsHidden()
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 48)
-                    .accessibilityLabel("Unused-for threshold in days")
-                    .focused($thresholdFieldFocused)
-                    .onAppear { thresholdDraft = model.cleanupThresholdDays }
-                    .onChange(of: model.cleanupThresholdDays) { _, newValue in
-                        thresholdDraft = newValue
-                    }
-                    .onSubmit { commitThresholdDraft() }
-                    .onChange(of: thresholdFieldFocused) { wasFocused, isFocused in
-                        if wasFocused, !isFocused {
-                            commitThresholdDraft()
+                // The number appears once: a typeable field with a Stepper
+                // beside it. Both edit a draft; the model (and its rescan)
+                // follows on Return, focus loss, or after a short pause.
+                LabeledContent("Unused for") {
+                    HStack(spacing: 6) {
+                        TextField(
+                            "Days",
+                            value: $thresholdDraft,
+                            format: .number
+                        )
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 48)
+                        .accessibilityLabel("Unused for, in days")
+                        .focused($thresholdFieldFocused)
+                        .onSubmit { commitThresholdDraft() }
+                        .onChange(of: thresholdFieldFocused) { wasFocused, isFocused in
+                            if wasFocused, !isFocused {
+                                commitThresholdDraft()
+                            }
                         }
+                        Text("days")
+                            .accessibilityHidden(true)
+                        Stepper("Days", value: $thresholdDraft, in: 1...365)
+                            .labelsHidden()
+                            .accessibilityLabel("Unused for, in days")
                     }
+                }
+                .onAppear {
+                    thresholdDraft = model.cleanupThresholdDays
+                    thresholdDraftLoaded = true
+                }
+                .onChange(of: model.cleanupThresholdDays) { _, newValue in
+                    thresholdDraft = newValue
+                }
+                .task(id: thresholdDraft) {
+                    // Debounce: rapid Stepper clicks rescan once, not per click.
+                    try? await Task.sleep(for: .milliseconds(500))
+                    // While typing, the field commits on Return or focus loss instead.
+                    guard !Task.isCancelled, thresholdDraftLoaded, !thresholdFieldFocused else { return }
+                    commitThresholdDraft()
+                }
+                .onDisappear {
+                    // .task(id:) is cancelled on disappear, so a pending debounce
+                    // never fires — commit explicitly so leaving the pane doesn't
+                    // silently drop the last Stepper change.
+                    commitThresholdDraft()
                 }
                 Toggle(
                     "Include loose files still in the watch folder",
@@ -80,8 +105,13 @@ struct CleanupSettingsView: View {
 
     private func commitThresholdDraft() {
         let clamped = min(365, max(1, thresholdDraft))
-        model.cleanupThresholdDays = clamped
-        thresholdDraft = clamped
+        // Setting the model rescans, so skip it when nothing changed.
+        if model.cleanupThresholdDays != clamped {
+            model.cleanupThresholdDays = clamped
+        }
+        if thresholdDraft != clamped {
+            thresholdDraft = clamped
+        }
     }
 }
 

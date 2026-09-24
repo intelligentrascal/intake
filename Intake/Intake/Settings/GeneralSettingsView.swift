@@ -3,41 +3,16 @@ import IntakeCore
 
 struct GeneralSettingsView: View {
     @Environment(AppModel.self) private var model
-    /// Which watch folder the Organizing section edits.
-    @State private var editingProfileID: String?
+    /// Watch folders whose settings are expanded (only used with several folders).
+    @State private var expandedFolderIDs: Set<String> = []
     @State private var pendingRemoval: WatchFolderProfile?
 
     var body: some View {
         Form {
-            Section {
-                ForEach(model.watchFolderControllers, id: \.profileID) { controller in
-                    WatchFolderRow(controller: controller) {
-                        pendingRemoval = controller.profile
-                    }
-                }
-                AddWatchFolderControl()
-            } header: {
-                Text(model.hasMultipleWatchFolders ? "Watch folders" : "Watch folder")
-            } footer: {
-                Text("Renames a stable download in place, then files it into a typed folder created only when needed. Up to \(WatchFolderProfile.softCap) folders, and they can’t overlap.")
-            }
-            Section {
-                OrganizeExistingMenu()
-                    .buttonStyle(.borderedProminent)
-                Button("Activity") {
-                    model.openActivity()
-                }
-            } header: {
-                Text("Catch up")
-            } footer: {
-                Text("Rename and file loose items already in the watch folder root. Files in category folders are left alone. Allowed when Automatic organizing is off; does not turn watching back on.")
-            }
-            if let profile = editingProfile {
-                organizingSection(for: profile)
-            }
+            watchFoldersSection
+            existingFilesSection
             notificationsSection
-            startupSection
-            appearanceSection
+            startupAndAppearanceSection
         }
         .formStyle(.grouped)
         .alert(
@@ -62,9 +37,7 @@ struct GeneralSettingsView: View {
             Button("Stop Watching", role: .destructive) {
                 if let id = pendingRemoval?.id {
                     model.removeWatchFolder(id: id)
-                    if editingProfileID == id {
-                        editingProfileID = nil
-                    }
+                    expandedFolderIDs.remove(id)
                 }
                 pendingRemoval = nil
             }
@@ -76,73 +49,75 @@ struct GeneralSettingsView: View {
         }
     }
 
-    private var editingProfile: WatchFolderProfile? {
-        editingProfileID.flatMap(model.watchFolderProfile(id:)) ?? model.watchFolderProfiles.first
-    }
-
-    @ViewBuilder
-    private func organizingSection(for profile: WatchFolderProfile) -> some View {
+    /// Each folder's organizing settings live with its row: inline with one
+    /// folder, in a disclosure per folder with several — so the settings being
+    /// edited always belong to the folder they sit under.
+    private var watchFoldersSection: some View {
         Section {
-            if model.hasMultipleWatchFolders {
-                Picker("Folder", selection: Binding(
-                    get: { profile.id },
-                    set: { editingProfileID = $0 }
-                )) {
-                    ForEach(model.watchFolderProfiles) { candidate in
-                        Text(candidate.displayName).tag(candidate.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                WatchFolderNameField(profile: profile)
-                    .id(profile.id)
-            }
-            Toggle(
-                "Automatic organizing",
-                isOn: Binding(
-                    get: { profile.isOrganizing },
-                    set: { model.setAutomaticOrganizing($0, for: profile.id) }
-                )
-            )
-            Toggle(
-                RenameOnStableCopy.toggleTitle,
-                isOn: Binding(
-                    get: { profile.renameWhenDownloadFinishes },
-                    set: { model.setRenameWhenDownloadFinishes($0, for: profile.id) }
-                )
-            )
-            Picker("Wait before organizing", selection: Binding(
-                get: { profile.organizingWait },
-                set: { model.setOrganizingWait($0, for: profile.id) }
-            )) {
-                ForEach(OrganizingWait.allCases) { wait in
-                    Text(wait.title).tag(wait)
-                }
-            }
-            .pickerStyle(.menu)
-            .disabled(!profile.isOrganizing)
-        } header: {
-            Text("Organizing")
-        } footer: {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(RenameOnStableCopy.footer)
-                Text("New downloads stay in the folder until this time has passed, so you can open them before Intake files them.")
+            ForEach(model.watchFolderControllers, id: \.profileID) { controller in
                 if model.hasMultipleWatchFolders {
-                    Text("Each watch folder has its own settings.")
+                    DisclosureGroup(isExpanded: expansionBinding(for: controller.profileID)) {
+                        WatchFolderNameField(profile: controller.profile)
+                            .id(controller.profileID)
+                        WatchFolderOrganizingControls(profile: controller.profile)
+                    } label: {
+                        WatchFolderRow(controller: controller, pathIsSelectable: false) {
+                            pendingRemoval = controller.profile
+                        }
+                    }
+                } else {
+                    WatchFolderRow(controller: controller) {
+                        pendingRemoval = controller.profile
+                    }
+                    WatchFolderOrganizingControls(profile: controller.profile)
                 }
             }
+            AddWatchFolderControl()
+        } header: {
+            Text(model.hasMultipleWatchFolders ? "Watch folders" : "Watch folder")
+        } footer: {
+            Text(watchFoldersFooter)
         }
     }
 
-    private var startupSection: some View {
+    private var watchFoldersFooter: String {
+        let base = "Intake renames each finished download in place, then files it into a typed folder created only when needed. Up to \(WatchFolderProfile.softCap) folders, and they can’t overlap."
+        return model.hasMultipleWatchFolders
+            ? base + " Expand a folder to change its own settings."
+            : base
+    }
+
+    private func expansionBinding(for id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedFolderIDs.contains(id) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedFolderIDs.insert(id)
+                } else {
+                    expandedFolderIDs.remove(id)
+                }
+            }
+        )
+    }
+
+    /// Organize Existing… is a one-shot catch-up for loose files already in a
+    /// watch folder root (from before Intake watched it, or while it was off).
+    private var existingFilesSection: some View {
         Section {
-            Toggle("Open at login", isOn: Binding(
-                get: { model.launchAtLoginEnabled },
-                set: { model.setLaunchAtLogin($0) }
-            ))
+            LabeledContent {
+                OrganizeExistingMenu()
+                    .buttonStyle(.borderedProminent)
+            } label: {
+                Text("Files already in the folder")
+                Text("Preview renames and moves for loose items in the root, then apply.")
+            }
+            Button("Open Activity") {
+                model.openActivity()
+            }
         } header: {
-            Text("Startup")
+            Text("Existing files")
         } footer: {
-            Text("Opens Intake in the background when you log in.")
+            Text("Category folders are left alone. Works while Automatic organizing is off, without turning it back on.")
         }
     }
 
@@ -173,12 +148,16 @@ struct GeneralSettingsView: View {
         } header: {
             Text("Notifications")
         } footer: {
-            Text("Off by default. When on, Intake asks for notification permission and sends a digest for what it filed, any errors, and new Cleanup items — never one notification per file. Errors are sent on their own, at most once a minute. Focus and system notification settings still apply.")
+            Text("Intake asks for permission when you turn this on, then sends digests — never one notification per file. Errors arrive on their own, at most once a minute.")
         }
     }
 
-    private var appearanceSection: some View {
+    private var startupAndAppearanceSection: some View {
         Section {
+            Toggle("Open at login", isOn: Binding(
+                get: { model.launchAtLoginEnabled },
+                set: { model.setLaunchAtLogin($0) }
+            ))
             Toggle(
                 "Show in Dock",
                 isOn: Binding(
@@ -194,10 +173,47 @@ struct GeneralSettingsView: View {
                 )
             )
         } header: {
-            Text("Appearance in macOS")
+            Text("Startup and appearance")
         } footer: {
-            Text("Keep Intake in the Dock so it’s easy to open Settings. The menu bar shows status without opening a window.")
+            Text("Open at login starts Intake in the background. The menu bar shows status without opening a window; one of Dock or menu bar stays on so you can reopen Settings.")
         }
+    }
+}
+
+/// One watch folder's own organizing settings. Pause / Resume stays in the
+/// row's menu; Automatic organizing and Rename keep their separate meanings.
+private struct WatchFolderOrganizingControls: View {
+    @Environment(AppModel.self) private var model
+    var profile: WatchFolderProfile
+
+    var body: some View {
+        Toggle(isOn: Binding(
+            get: { profile.isOrganizing },
+            set: { model.setAutomaticOrganizing($0, for: profile.id) }
+        )) {
+            Text("Automatic organizing")
+            Text("Files new downloads into folders. Off: files stay where they land.")
+        }
+        Toggle(isOn: Binding(
+            get: { profile.renameWhenDownloadFinishes },
+            set: { model.setRenameWhenDownloadFinishes($0, for: profile.id) }
+        )) {
+            Text(RenameOnStableCopy.toggleTitle)
+            Text("Renames on this Mac as soon as the download is stable, on its own — whether or not Automatic organizing is on.")
+        }
+        Picker(selection: Binding(
+            get: { profile.organizingWait },
+            set: { model.setOrganizingWait($0, for: profile.id) }
+        )) {
+            ForEach(OrganizingWait.allCases) { wait in
+                Text(wait.title).tag(wait)
+            }
+        } label: {
+            Text("Wait before organizing")
+            Text("New downloads stay put this long so you can open them before they’re filed.")
+        }
+        .pickerStyle(.menu)
+        .disabled(!profile.isOrganizing)
     }
 }
 
@@ -206,6 +222,10 @@ struct GeneralSettingsView: View {
 private struct WatchFolderRow: View {
     @Environment(AppModel.self) private var model
     var controller: WatchFolderController
+    /// False when this row is the label of a DisclosureGroup (several
+    /// folders): selectable text there would eat the click that's supposed
+    /// to expand/collapse the row instead.
+    var pathIsSelectable: Bool = true
     var onRemove: () -> Void
 
     var body: some View {
@@ -219,17 +239,24 @@ private struct WatchFolderRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(profile.displayName)
-                    Text(controller.folder.path)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
+                    Group {
+                        if pathIsSelectable {
+                            Text(controller.folder.path)
+                                .textSelection(.enabled)
+                        } else {
+                            Text(controller.folder.path)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
                 Text(statusText(for: profile))
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .help(statusHelp(for: profile))
                 Menu {
                     Button("Show in Finder") {
                         model.revealWatchFolder(id: controller.profileID)
@@ -237,7 +264,7 @@ private struct WatchFolderRow: View {
                     Button("Change Folder…") {
                         model.changeWatchFolder(id: controller.profileID)
                     }
-                    Button(profile.isPaused ? "Resume" : "Pause") {
+                    Button(profile.isPaused ? "Resume Organizing" : "Pause Organizing") {
                         model.setWatchFolderPaused(!profile.isPaused, for: controller.profileID)
                     }
                     Divider()
@@ -279,6 +306,19 @@ private struct WatchFolderRow: View {
             return "Paused"
         }
         return profile.automaticOrganizing ? "Watching" : "Organizing off"
+    }
+
+    private func statusHelp(for profile: WatchFolderProfile) -> String {
+        if controller.accessLost {
+            return "Intake lost access to this folder. Grant access again to resume."
+        }
+        if profile.isPaused {
+            return "Paused from this folder’s menu — temporary, until you resume. Filing stops; renaming can still run."
+        }
+        if profile.automaticOrganizing {
+            return "New downloads are filed into folders after Wait before organizing."
+        }
+        return "Automatic organizing is off for this folder. Files stay in place; renaming can still run."
     }
 }
 
