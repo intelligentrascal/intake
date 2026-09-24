@@ -29,7 +29,11 @@ struct OrganizeExistingChromeModifier: ViewModifier {
             ) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("There are no loose files in the \(model.watchFolder.lastPathComponent) folder root.")
+                if let name = model.organizeTargetName {
+                    Text("There are no loose files in the \(name) folder root.")
+                } else {
+                    Text("There are no loose files in your watch folders.")
+                }
             }
     }
 }
@@ -148,7 +152,7 @@ private struct OrganizePreviewGroupHeader: View {
             .accessibilityLabel(
                 model.isGroupFullyExcluded(group) ? "Include \(group.destinationFolderName)" : "Exclude \(group.destinationFolderName)"
             )
-            Text(group.destinationFolderName)
+            Text(model.organizeGroupTitle(group))
                 .font(.subheadline.weight(.semibold))
             if group.isNewFolder {
                 Text("New folder")

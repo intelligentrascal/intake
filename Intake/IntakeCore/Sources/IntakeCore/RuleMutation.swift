@@ -28,7 +28,8 @@ public enum RuleMutation: Sendable {
         extensions: Set<String>,
         conditions: [RuleCondition] = [],
         isEnabled: Bool,
-        subfolderPattern: SubfolderPattern = .none
+        subfolderPattern: SubfolderPattern = .none,
+        scope: RuleScope? = nil
     ) -> [RoutingRule] {
         rules.map { rule in
             guard rule.id == id else { return rule }
@@ -38,6 +39,9 @@ public enum RuleMutation: Sendable {
             copy.conditions = conditions
             copy.isEnabled = isEnabled
             copy.subfolderPattern = subfolderPattern
+            if let scope {
+                copy.scope = scope
+            }
             return copy
         }
     }
@@ -48,11 +52,35 @@ public enum RuleMutation: Sendable {
         extensions: Set<String>,
         conditions: [RuleCondition] = [],
         isEnabled: Bool = true,
-        subfolderPattern: SubfolderPattern = .none
+        subfolderPattern: SubfolderPattern = .none,
+        scope: RuleScope = .allWatchFolders
     ) -> [RoutingRule] {
         rules + [
-            .custom(folderName: folderName, extensions: extensions, conditions: conditions, isEnabled: isEnabled, subfolderPattern: subfolderPattern),
+            .custom(
+                folderName: folderName,
+                extensions: extensions,
+                conditions: conditions,
+                isEnabled: isEnabled,
+                subfolderPattern: subfolderPattern,
+                scope: scope
+            ),
         ]
+    }
+
+    /// Drops a removed watch folder from every rule's scope. A rule left
+    /// applying to no folder is disabled and reset to all watch folders, so
+    /// it never silently starts filing elsewhere — the user re-enables it.
+    public static func removingWatchFolder(_ profileID: String, from rules: [RoutingRule]) -> [RoutingRule] {
+        rules.map { rule in
+            var copy = rule
+            if let narrowed = rule.scope.removing(profileID) {
+                copy.scope = narrowed
+            } else {
+                copy.scope = .allWatchFolders
+                copy.isEnabled = false
+            }
+            return copy
+        }
     }
 
     public static func deletingCustom(_ rules: [RoutingRule], id: String) -> [RoutingRule] {

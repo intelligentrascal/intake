@@ -26,10 +26,8 @@ struct IntakeApp: App {
                 Button(model.isPaused ? "Resume Organizing" : "Pause Organizing") {
                     model.togglePaused()
                 }
-                Button(OrganizeExistingCopy.menuTitle) {
-                    model.requestOrganizeExisting()
-                }
-                .disabled(model.isOrganizingExisting || model.watchFolderBookmarkLost)
+                OrganizeExistingMenu()
+                    .environment(model)
                 Button("Activity") {
                     model.openActivity()
                 }

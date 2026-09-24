@@ -19,12 +19,16 @@
 
 ## Settings IA (v1)
 
-1. General — watch folder, organize existing, **Automatic organizing**, **Rename when download finishes**, **Wait before organizing**, Open at login, appearance in macOS (Dock / menu bar)
+1. General — watch folders, organize existing, **Automatic organizing**, **Rename when download finishes**, **Wait before organizing** (per folder), Open at login, appearance in macOS (Dock / menu bar)
 2. Rules — editable taxonomy, drag order, custom rules, on-device suggestions
 3. Cleanup — duration threshold, include roots, decision queue
 4. Activity — audit trail of ingest and cleanup (open the dedicated window from here or the menu)
 5. AI — suggestions off by default; OpenRouter is the first real provider (Keychain key)
 6. About — license, links
+
+### Watch folders
+
+General → first section, titled **Watch folder** (one) or **Watch folders** (several). One row per folder: SF Symbol `folder` (or `exclamationmark.triangle.fill` in warning color when access is lost), display name, path in caption (middle-truncated, selectable), trailing status text (Watching / Paused / Needs access) and an `ellipsis.circle` borderless menu: Show in Finder, Change Folder…, Pause / Resume, Remove… (destructive, confirmed; disabled for the last folder). Lost access adds an inline row: “Intake can’t see this folder” + **Grant Access…**. Below the rows: **Add Folder…** — a menu with “Screenshots (<folder>)…” and “Choose Folder…” when the screenshot location isn't watched yet, otherwise a plain button. Refused folders (overlap, category folder, cap of 5) show an alert “Can’t use this folder” with the reason. The Organizing section edits one folder: with several, a **Folder** menu picker and a **Name** field sit at its top. Activity gets a toolbar **Folder** menu picker (All Folders / each folder) and Cleanup a **Watch folder** picker, both only with several folders. The rule editor gets an **Applies to** section (All watch folders / Specific folders with a toggle per folder).
 
 ### Wait before organizing
 

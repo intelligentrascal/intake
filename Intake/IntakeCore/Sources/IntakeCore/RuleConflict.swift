@@ -74,6 +74,8 @@ public struct RuleConflict: Identifiable, Equatable, Sendable {
     /// `earlier`'s conditions also appears in `later`'s (so `later` can never
     /// be more permissive than `earlier`).
     static func subsumes(_ earlier: RoutingRule, _ later: RoutingRule) -> Bool {
+        // A rule scoped to other watch folders can't shadow this one there.
+        guard earlier.scope.covers(later.scope) else { return false }
         let extensionsCoverAll: Bool
         if earlier.extensions.isEmpty {
             extensionsCoverAll = true
@@ -98,11 +100,14 @@ public struct RuleConflict: Identifiable, Equatable, Sendable {
             guard claimed.count > 1, let winner = claimed.first else {
                 return nil
             }
+            // Rules scoped to different watch folders never compete.
+            let losers = claimed.dropFirst().filter { $0.scope.overlaps(winner.scope) }
+            guard !losers.isEmpty else { return nil }
             return RuleConflict(
                 fileExtension: ext,
                 winnerID: winner.id,
                 winnerFolderName: winner.folderName,
-                loserFolderNames: claimed.dropFirst().map(\.folderName)
+                loserFolderNames: losers.map(\.folderName)
             )
         }
     }

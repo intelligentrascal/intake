@@ -10,6 +10,8 @@ public enum OrganizeExistingCopy: Sendable {
         "Organize files already in \(folderName)?"
     }
 
+    public static let confirmTitleAllFolders = "Organize files already in your watch folders?"
+
     public static let confirmBody =
         "Intake will rename and file items sitting in the watch folder root using your current rules. Files already in category folders are left alone. You can follow every change in Activity."
 
