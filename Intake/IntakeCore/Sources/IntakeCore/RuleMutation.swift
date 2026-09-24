@@ -26,6 +26,7 @@ public enum RuleMutation: Sendable {
         id: String,
         folderName: String,
         extensions: Set<String>,
+        conditions: [RuleCondition] = [],
         isEnabled: Bool
     ) -> [RoutingRule] {
         rules.map { rule in
@@ -33,6 +34,7 @@ public enum RuleMutation: Sendable {
             var copy = rule
             copy.folderName = folderName
             copy.extensions = Set(extensions.map { $0.lowercased() })
+            copy.conditions = conditions
             copy.isEnabled = isEnabled
             return copy
         }
@@ -42,10 +44,11 @@ public enum RuleMutation: Sendable {
         _ rules: [RoutingRule],
         folderName: String,
         extensions: Set<String>,
+        conditions: [RuleCondition] = [],
         isEnabled: Bool = true
     ) -> [RoutingRule] {
         rules + [
-            .custom(folderName: folderName, extensions: extensions, isEnabled: isEnabled),
+            .custom(folderName: folderName, extensions: extensions, conditions: conditions, isEnabled: isEnabled),
         ]
     }
 
@@ -67,6 +70,7 @@ public enum RuleMutation: Sendable {
             copy.folderName = category.folderName
             copy.systemImage = category.systemImage
             copy.extensions = category.defaultExtensions
+            copy.conditions = []
             return copy
         }
     }

@@ -251,10 +251,11 @@ struct ActivityRow: View {
         case .renamed:
             return "Renamed · \(when)"
         case .moved:
+            let from = entry.sourceDomain.map { " · from \($0)" } ?? ""
             if let folder = entry.destinationFolder {
-                return "Moved to \(folder) · \(when)"
+                return "Moved to \(folder)\(from) · \(when)"
             }
-            return "Moved · \(when)"
+            return "Moved\(from) · \(when)"
         case .skipped:
             return "Skipped · \(when)"
         case .error:

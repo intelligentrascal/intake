@@ -584,13 +584,20 @@ final class AppModel {
         rules = RuleMutation.moving(rules, from: source, to: destination)
     }
 
-    func saveRule(id: String?, folderName: String, extensions: Set<String>, isEnabled: Bool) {
+    func saveRule(
+        id: String?,
+        folderName: String,
+        extensions: Set<String>,
+        conditions: [RuleCondition] = [],
+        isEnabled: Bool
+    ) {
         if let id {
             rules = RuleMutation.updating(
                 rules,
                 id: id,
                 folderName: folderName,
                 extensions: extensions,
+                conditions: conditions,
                 isEnabled: isEnabled
             )
         } else {
@@ -598,6 +605,7 @@ final class AppModel {
                 rules,
                 folderName: folderName,
                 extensions: extensions,
+                conditions: conditions,
                 isEnabled: isEnabled
             )
         }
@@ -649,6 +657,23 @@ final class AppModel {
 
     var ruleConflicts: [RuleConflict] {
         RuleConflict.inRules(rules)
+    }
+
+    var unreachableRules: [RuleConflict.UnreachableRule] {
+        RuleConflict.unreachableRules(in: rules)
+    }
+
+    /// Recently seen source domains, for the rule editor's hints — most recent first.
+    var recentSourceDomains: [String] {
+        var seen: Set<String> = []
+        var result: [String] = []
+        for entry in activity {
+            guard let domain = entry.sourceDomain, !seen.contains(domain) else { continue }
+            seen.insert(domain)
+            result.append(domain)
+            if result.count >= 5 { break }
+        }
+        return result
     }
 
     var managedFolderNames: Set<String> {
