@@ -19,7 +19,7 @@ struct GeneralSettingsView: View {
             } header: {
                 Text(model.hasMultipleWatchFolders ? "Watch folders" : "Watch folder")
             } footer: {
-                Text("Intake waits until a download is stable, then can rename it in place. Filing into typed folders still follows Wait before organizing. Folders appear only when needed, inside the watch folder a file came from. Up to \(WatchFolderProfile.softCap) folders; they can’t overlap.")
+                Text("Renames a stable download in place, then files it into a typed folder created only when needed. Up to \(WatchFolderProfile.softCap) folders, and they can’t overlap.")
             }
             Section {
                 OrganizeExistingMenu()
@@ -36,6 +36,7 @@ struct GeneralSettingsView: View {
                 organizingSection(for: profile)
             }
             notificationsSection
+            startupSection
             appearanceSection
         }
         .formStyle(.grouped)
@@ -119,10 +120,6 @@ struct GeneralSettingsView: View {
             }
             .pickerStyle(.menu)
             .disabled(!profile.isOrganizing)
-            Toggle("Open at login", isOn: Binding(
-                get: { model.launchAtLoginEnabled },
-                set: { model.setLaunchAtLogin($0) }
-            ))
         } header: {
             Text("Organizing")
         } footer: {
@@ -133,6 +130,19 @@ struct GeneralSettingsView: View {
                     Text("Each watch folder has its own settings.")
                 }
             }
+        }
+    }
+
+    private var startupSection: some View {
+        Section {
+            Toggle("Open at login", isOn: Binding(
+                get: { model.launchAtLoginEnabled },
+                set: { model.setLaunchAtLogin($0) }
+            ))
+        } header: {
+            Text("Startup")
+        } footer: {
+            Text("Opens Intake in the background when you log in.")
         }
     }
 
@@ -262,7 +272,13 @@ private struct WatchFolderRow: View {
         if controller.accessLost {
             return "Needs access"
         }
-        return profile.isOrganizing ? "Watching" : "Paused"
+        // Paused (the per-folder menu / menu bar Pause-Resume) and Automatic
+        // organizing being off are two different states — don't collapse them
+        // into one "Paused" label.
+        if profile.isPaused {
+            return "Paused"
+        }
+        return profile.automaticOrganizing ? "Watching" : "Organizing off"
     }
 }
 
