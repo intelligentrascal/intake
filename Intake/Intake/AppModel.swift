@@ -1109,7 +1109,11 @@ final class AppModel {
     }
 
     var openRouterConfiguration: OpenRouterConfiguration {
-        OpenRouterConfiguration(baseURL: openRouterBaseURL, model: openRouterModel)
+        let trimmedModel = openRouterModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return OpenRouterConfiguration(
+            baseURL: openRouterBaseURL,
+            model: trimmedModel.isEmpty ? OpenRouterConfiguration.defaultModel : trimmedModel
+        )
     }
 
     var canCallOpenRouter: Bool {
