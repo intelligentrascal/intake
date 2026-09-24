@@ -187,19 +187,19 @@ private struct WatchFolderOrganizingControls: View {
     var profile: WatchFolderProfile
 
     var body: some View {
-        Toggle(
-            "Automatic organizing",
-            isOn: Binding(
-                get: { profile.isOrganizing },
-                set: { model.setAutomaticOrganizing($0, for: profile.id) }
-            )
-        )
+        Toggle(isOn: Binding(
+            get: { profile.isOrganizing },
+            set: { model.setAutomaticOrganizing($0, for: profile.id) }
+        )) {
+            Text("Automatic organizing")
+            Text("Files new downloads into folders. Off: files stay where they land.")
+        }
         Toggle(isOn: Binding(
             get: { profile.renameWhenDownloadFinishes },
             set: { model.setRenameWhenDownloadFinishes($0, for: profile.id) }
         )) {
             Text(RenameOnStableCopy.toggleTitle)
-            Text("Renames on this Mac as soon as the download is stable.")
+            Text("Renames on this Mac as soon as the download is stable, on its own — whether or not Automatic organizing is on.")
         }
         Picker(selection: Binding(
             get: { profile.organizingWait },
@@ -246,6 +246,7 @@ private struct WatchFolderRow: View {
                 Text(statusText(for: profile))
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .help(statusHelp(for: profile))
                 Menu {
                     Button("Show in Finder") {
                         model.revealWatchFolder(id: controller.profileID)
@@ -253,7 +254,7 @@ private struct WatchFolderRow: View {
                     Button("Change Folder…") {
                         model.changeWatchFolder(id: controller.profileID)
                     }
-                    Button(profile.isPaused ? "Resume" : "Pause") {
+                    Button(profile.isPaused ? "Resume Watching" : "Pause Watching") {
                         model.setWatchFolderPaused(!profile.isPaused, for: controller.profileID)
                     }
                     Divider()
@@ -295,6 +296,19 @@ private struct WatchFolderRow: View {
             return "Paused"
         }
         return profile.automaticOrganizing ? "Watching" : "Organizing off"
+    }
+
+    private func statusHelp(for profile: WatchFolderProfile) -> String {
+        if controller.accessLost {
+            return "Intake lost access to this folder. Grant access again to resume."
+        }
+        if profile.isPaused {
+            return "Paused from this folder’s menu — temporary, until you resume. Filing stops; renaming can still run."
+        }
+        if profile.automaticOrganizing {
+            return "New downloads are filed into folders after Wait before organizing."
+        }
+        return "Automatic organizing is off for this folder. Files stay in place; renaming can still run."
     }
 }
 
