@@ -53,6 +53,11 @@ private struct CleanupQueueTable: View {
                 TableColumn("Name") { candidate in
                     Text(candidate.url.lastPathComponent)
                 }
+                TableColumn("Reason") { candidate in
+                    reasonText(for: candidate)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 TableColumn("Age") { candidate in
                     Text(candidate.lastUsed, style: .relative)
                 }
@@ -120,5 +125,18 @@ private struct CleanupQueueTable: View {
 
     private func byteCount(_ value: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: value, countStyle: .file)
+    }
+
+    private func reasonText(for candidate: CleanupCandidate) -> Text {
+        switch candidate.reason {
+        case .stale:
+            return Text(candidate.reason.label)
+        case .duplicate(let original):
+            return Text("Duplicate of \(original.lastPathComponent)")
+        case .abandonedDownload:
+            return Text(candidate.reason.label)
+        case .installed(let appName, _):
+            return Text("Installer for \(appName)")
+        }
     }
 }
