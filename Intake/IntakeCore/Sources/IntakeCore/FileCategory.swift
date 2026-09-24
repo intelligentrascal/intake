@@ -58,7 +58,7 @@ public enum FileCategory: String, CaseIterable, Identifiable, Sendable, Codable,
         case .archives:
             ["zip", "7z", "rar", "tar", "gz"]
         case .installers:
-            ["dmg", "pkg"]
+            ["dmg", "pkg", "mpkg"]
         case .other:
             []
         }

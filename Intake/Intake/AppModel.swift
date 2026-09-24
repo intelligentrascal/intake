@@ -71,6 +71,7 @@ final class AppModel {
     var cleanupCandidates: [CleanupCandidate]
     /// Kept across scans so an unchanged file's duplicate hash isn't recomputed.
     private let cleanupHashCache = DuplicateHashCache()
+    private let cleanupPackageReceiptResolver = PackageReceiptResolver()
     var cleanupThresholdDays: Int {
         didSet {
             UserDefaults.standard.set(cleanupThresholdDays, forKey: SettingsKey.cleanupDays)
@@ -1016,8 +1017,19 @@ final class AppModel {
             snoozedUntil: snoozedUntil,
             ignorePolicy: ignorePolicy,
             managedFolderNames: managedFolderNames,
-            hashCache: cleanupHashCache
+            hashCache: cleanupHashCache,
+            mountedVolumeURLs: mountedVolumeURLs(),
+            packageReceiptResolver: cleanupPackageReceiptResolver
         ).candidates()
+    }
+
+    /// Currently mounted volumes, for skipping installers whose disk image
+    /// is already mounted. Never mounts anything itself — read-only.
+    private func mountedVolumeURLs() -> [URL] {
+        FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: nil,
+            options: [.skipHiddenVolumes]
+        ) ?? []
     }
 
     func fileAway(_ candidate: CleanupCandidate) {

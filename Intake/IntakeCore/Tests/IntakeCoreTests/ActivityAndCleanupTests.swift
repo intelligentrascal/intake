@@ -308,6 +308,365 @@ struct CleanupScannerTests {
     }
 }
 
+struct InstallerCleanupTests {
+    @Test
+    func installerWithNewerAppIsFlaggedAsInstalled() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let apps = try makeTempApplicationsFolder()
+        defer { try? fileManager.removeItem(at: apps) }
+
+        let installer = root.appendingPathComponent("Foo-2.3-arm64.dmg")
+        try Data("dmg".utf8).write(to: installer)
+        let now = Date()
+        let app = try makeApp(named: "Foo.app", in: apps)
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: true,
+            applicationsFolders: [apps],
+            installDateProvider: dateProvider([
+                installer: now.addingTimeInterval(-10 * 24 * 3600),
+                app: now.addingTimeInterval(-1 * 24 * 3600),
+            ])
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.map(\.url.lastPathComponent) == ["Foo-2.3-arm64.dmg"])
+        guard case .installed(let appName, let appURL) = found.first?.reason else {
+            Issue.record("Expected an .installed reason")
+            return
+        }
+        #expect(appName == "Foo")
+        #expect(appURL.standardizedFileURL.resolvingSymlinksInPath() == app.standardizedFileURL.resolvingSymlinksInPath())
+    }
+
+    @Test
+    func noCandidateWhenTheMatchingAppIsMissing() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let apps = try makeTempApplicationsFolder()
+        defer { try? fileManager.removeItem(at: apps) }
+
+        let installer = root.appendingPathComponent("Foo-2.3-arm64.dmg")
+        try Data("dmg".utf8).write(to: installer)
+        let now = Date()
+
+        // Recent enough that it wouldn't be stale on its own, and no app in
+        // the fake Applications folder to match against.
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: true,
+            applicationsFolders: [apps],
+            installDateProvider: dateProvider([installer: now.addingTimeInterval(-10 * 24 * 3600)])
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.isEmpty)
+    }
+
+    @Test
+    func noCandidateWhenTheAppIsOlderThanTheInstaller() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let apps = try makeTempApplicationsFolder()
+        defer { try? fileManager.removeItem(at: apps) }
+
+        let installer = root.appendingPathComponent("Foo-2.3-arm64.dmg")
+        try Data("dmg".utf8).write(to: installer)
+        let now = Date()
+        let app = try makeApp(named: "Foo.app", in: apps)
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: true,
+            applicationsFolders: [apps],
+            installDateProvider: dateProvider([
+                installer: now.addingTimeInterval(-1 * 24 * 3600),
+                app: now.addingTimeInterval(-10 * 24 * 3600),
+            ])
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.isEmpty)
+    }
+
+    @Test
+    func appWithAnOldBuildDateButRecentAddedDateStillMatches() throws {
+        // Regression test: Finder preserves a dragged app's original
+        // (vendor build) mtime, which is almost always before the download.
+        // The "added" date — when the bundle actually landed in
+        // Applications — is what should decide the match. Real mtime is set
+        // to an implausibly old date here to prove the match doesn't
+        // silently fall through to it once the injected provider is in play.
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let apps = try makeTempApplicationsFolder()
+        defer { try? fileManager.removeItem(at: apps) }
+
+        let installer = root.appendingPathComponent("Foo-2.3-arm64.dmg")
+        try Data("dmg".utf8).write(to: installer)
+        let now = Date()
+        let app = try makeApp(named: "Foo.app", in: apps)
+        try fileManager.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-400 * 24 * 3600)],
+            ofItemAtPath: app.path
+        )
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: true,
+            applicationsFolders: [apps],
+            installDateProvider: dateProvider([
+                installer: now.addingTimeInterval(-10 * 24 * 3600),
+                app: now.addingTimeInterval(-1 * 24 * 3600),
+            ])
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.map(\.url.lastPathComponent) == ["Foo-2.3-arm64.dmg"])
+        guard case .installed(let appName, _) = found.first?.reason else {
+            Issue.record("Expected an .installed reason")
+            return
+        }
+        #expect(appName == "Foo")
+    }
+
+    @Test
+    func installerWithAnOldServerMtimeButRecentAddedDateStillMatches() throws {
+        // Regression test: browsers can set a downloaded file's mtime from
+        // the server's Last-Modified header, which can be months old (or
+        // just wrong). The "added" date — when Intake's watch folder
+        // actually received the file — is what should decide the match.
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let apps = try makeTempApplicationsFolder()
+        defer { try? fileManager.removeItem(at: apps) }
+
+        let installer = root.appendingPathComponent("Foo-2.3-arm64.dmg")
+        try Data("dmg".utf8).write(to: installer)
+        let now = Date()
+        try fileManager.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-400 * 24 * 3600)],
+            ofItemAtPath: installer.path
+        )
+        let app = try makeApp(named: "Foo.app", in: apps)
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: true,
+            applicationsFolders: [apps],
+            installDateProvider: dateProvider([
+                installer: now.addingTimeInterval(-10 * 24 * 3600),
+                app: now.addingTimeInterval(-1 * 24 * 3600),
+            ])
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.map(\.url.lastPathComponent) == ["Foo-2.3-arm64.dmg"])
+    }
+
+    @Test
+    func defaultDatePrefersCreationDateOverModificationDate() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let file = root.appendingPathComponent("Foo.dmg")
+        try Data("dmg".utf8).write(to: file)
+        let now = Date()
+        try fileManager.setAttributes(
+            [
+                .creationDate: now.addingTimeInterval(-1 * 24 * 3600),
+                .modificationDate: now.addingTimeInterval(-400 * 24 * 3600),
+            ],
+            ofItemAtPath: file.path
+        )
+
+        let date = InstalledAppMatcher.defaultDate(for: file, fileManager: fileManager)
+        #expect(date > now.addingTimeInterval(-2 * 24 * 3600))
+    }
+
+    @Test
+    func mountedImageIsSkippedEvenWhenStale() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+
+        let installer = root.appendingPathComponent("Foo-2.3-arm64.dmg")
+        try Data("dmg".utf8).write(to: installer)
+        let now = Date()
+        try fileManager.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-90 * 24 * 3600)],
+            ofItemAtPath: installer.path
+        )
+
+        // A fake mounted volume named "Foo" — same URLs the real
+        // FileManager.mountedVolumeURLs API would hand back.
+        let mountedVolume = URL(fileURLWithPath: "/Volumes/Foo", isDirectory: true)
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 30,
+            includeWatchRoot: true,
+            applicationsFolders: [],
+            mountedVolumeURLs: [mountedVolume]
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.isEmpty)
+    }
+
+    @Test
+    func installerInInstallersFolderIsMatched() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let apps = try makeTempApplicationsFolder()
+        defer { try? fileManager.removeItem(at: apps) }
+
+        let installersFolder = root.appendingPathComponent("Installers", isDirectory: true)
+        try fileManager.createDirectory(at: installersFolder, withIntermediateDirectories: true)
+        let installer = installersFolder.appendingPathComponent("Foo-2.3-arm64.dmg")
+        try Data("dmg".utf8).write(to: installer)
+        let now = Date()
+        let app = try makeApp(named: "Foo.app", in: apps)
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: false,
+            applicationsFolders: [apps],
+            installDateProvider: dateProvider([
+                installer: now.addingTimeInterval(-10 * 24 * 3600),
+                app: now.addingTimeInterval(-1 * 24 * 3600),
+            ])
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.map(\.url.lastPathComponent) == ["Foo-2.3-arm64.dmg"])
+        #expect(found.first?.reason.label == "Installer")
+    }
+
+    @Test
+    func pkgFallsBackToNameMatchingWhenReceiptsArentReadable() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let apps = try makeTempApplicationsFolder()
+        defer { try? fileManager.removeItem(at: apps) }
+
+        // Not a real xar/flat package, so the receipt resolver can't find an
+        // identifier in it and returns nil — matching falls back to names.
+        let installer = root.appendingPathComponent("Foo Setup 1.0.pkg")
+        try Data("not a real pkg".utf8).write(to: installer)
+        let now = Date()
+        let app = try makeApp(named: "Foo.app", in: apps)
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: true,
+            applicationsFolders: [apps],
+            installDateProvider: dateProvider([
+                installer: now.addingTimeInterval(-10 * 24 * 3600),
+                app: now.addingTimeInterval(-1 * 24 * 3600),
+            ])
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.map(\.url.lastPathComponent) == ["Foo Setup 1.0.pkg"])
+        guard case .installed(let appName, _) = found.first?.reason else {
+            Issue.record("Expected an .installed reason via name-match fallback")
+            return
+        }
+        #expect(appName == "Foo")
+    }
+
+    @Test
+    func mpkgIsMatchedLikeADmgOrPkg() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let apps = try makeTempApplicationsFolder()
+        defer { try? fileManager.removeItem(at: apps) }
+
+        let installer = root.appendingPathComponent("Foo-2.3.mpkg")
+        try Data("mpkg".utf8).write(to: installer)
+        let now = Date()
+        let app = try makeApp(named: "Foo.app", in: apps)
+
+        let found = CleanupScanner(
+            watchFolder: root,
+            thresholdDays: 365,
+            includeWatchRoot: true,
+            applicationsFolders: [apps],
+            installDateProvider: dateProvider([
+                installer: now.addingTimeInterval(-10 * 24 * 3600),
+                app: now.addingTimeInterval(-1 * 24 * 3600),
+            ])
+        ).candidates(now: now, fileManager: fileManager)
+
+        #expect(found.map(\.url.lastPathComponent) == ["Foo-2.3.mpkg"])
+        #expect(found.first?.reason.label == "Installer")
+    }
+
+    @Test
+    func normalizeStripsVersionsArchTokensAndInstallerWords() {
+        #expect(InstalledAppMatcher.normalize("Foo-2.3-arm64.dmg") == "foo")
+        #expect(InstalledAppMatcher.normalize("Foo Setup 1.0.pkg") == "foo")
+        #expect(InstalledAppMatcher.normalize("Foo_Installer_x86_64.dmg") == "foo")
+        #expect(InstalledAppMatcher.normalize("Foo.app") == "foo")
+        #expect(InstalledAppMatcher.normalize("Foo") == "foo")
+    }
+
+    /// Builds an `installDateProvider` from a fixed `[URL: Date]` map,
+    /// standing in for a real added-to-directory date that a test can't
+    /// reliably set on disk. URLs not in `overrides` fall back to `.distantPast`.
+    private func dateProvider(_ overrides: [URL: Date]) -> @Sendable (URL, FileManager) -> Date {
+        let normalized = Dictionary(
+            uniqueKeysWithValues: overrides.map { ($0.key.standardizedFileURL.path, $0.value) }
+        )
+        return { url, _ in normalized[url.standardizedFileURL.path] ?? .distantPast }
+    }
+
+    private func makeTempWatchFolder() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "intake-cleanup-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    private func makeTempApplicationsFolder() throws -> URL {
+        let apps = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "intake-fake-applications-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
+        return apps
+    }
+
+    /// A minimal, real `.app` bundle: a directory with an Info.plist naming
+    /// the app, so InstalledAppMatcher's Info.plist read exercises real code.
+    private func makeApp(named name: String, in folder: URL) throws -> URL {
+        let fileManager = FileManager.default
+        let appURL = folder.appendingPathComponent(name, isDirectory: true)
+        let contents = appURL.appendingPathComponent("Contents", isDirectory: true)
+        try fileManager.createDirectory(at: contents, withIntermediateDirectories: true)
+        let displayName = (name as NSString).deletingPathExtension
+        let plist: [String: Any] = [
+            "CFBundleDisplayName": displayName,
+            "CFBundleName": displayName,
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try data.write(to: contents.appendingPathComponent("Info.plist"))
+        return appURL
+    }
+}
+
 struct CleanupProcessorTests {
     @Test
     func fileAwayMovesAndDeleteRemovesThenPrunesEmptyManagedFolders() throws {
