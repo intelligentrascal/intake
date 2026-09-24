@@ -161,9 +161,9 @@ struct ActivityListView: View {
             list.toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Reveal in Finder") {
-                        model.reveal(selectedEntry?.url)
+                        model.reveal(selectedEntry)
                     }
-                    .disabled(selectedEntry?.url == nil)
+                    .disabled(!(selectedEntry?.hasRevealablePath ?? false))
                 }
             }
         } else {
@@ -180,22 +180,22 @@ struct ActivityListView: View {
                     .simultaneousGesture(
                         TapGesture(count: 2).onEnded {
                             selection = entry.id
-                            model.reveal(entry.url)
+                            model.reveal(entry)
                         }
                     )
                     .contextMenu {
                         Button("Reveal in Finder") {
-                            model.reveal(entry.url)
+                            model.reveal(entry)
                         }
-                        .disabled(entry.url == nil)
+                        .disabled(!entry.hasRevealablePath)
                         Button("Copy path") {
                             model.copyPath(entry.url)
                         }
-                        .disabled(entry.url == nil)
+                        .disabled(!entry.hasRevealablePath)
                         undoContextItems(for: entry)
                     }
                     .accessibilityAction(named: "Reveal in Finder") {
-                        model.reveal(entry.url)
+                        model.reveal(entry)
                     }
             }
         }

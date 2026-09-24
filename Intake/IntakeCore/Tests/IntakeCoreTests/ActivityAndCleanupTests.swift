@@ -709,3 +709,120 @@ struct CleanupProcessorTests {
         #expect(pruned.first?.kind == .folderRemoved)
     }
 }
+
+struct ActivityRevealTests {
+    @Test
+    func revealURLUsesEntryURLWhenFileStillExists() {
+        let watch = "/tmp/intake-reveal/Downloads"
+        let path = "\(watch)/Notes.pdf"
+        let entry = ActivityEntry(
+            kind: .renamed,
+            detail: "Renamed a to Notes.pdf",
+            url: URL(fileURLWithPath: path),
+            fileName: "Notes.pdf",
+            beforePath: "\(watch)/notes.pdf",
+            afterPath: path
+        )
+        let exists: Set<String> = [path]
+        let url = ActivityLog.revealURL(for: entry, in: [entry], fileExists: { exists.contains($0) })
+        #expect(url?.path == path)
+    }
+
+    @Test
+    func revealURLFollowsRenameThenMoveChainWhenRenamePathIsStale() {
+        let watch = "/tmp/intake-reveal/Downloads"
+        let renamedPath = "\(watch)/Notes.pdf"
+        let filedPath = "\(watch)/Documents/Notes.pdf"
+        let renamed = ActivityEntry(
+            kind: .renamed,
+            detail: "Renamed a to Notes.pdf",
+            url: URL(fileURLWithPath: renamedPath),
+            fileName: "Notes.pdf",
+            beforePath: "\(watch)/notes.pdf",
+            afterPath: renamedPath
+        )
+        let moved = ActivityEntry(
+            kind: .moved,
+            detail: "Moved Notes.pdf to Documents",
+            url: URL(fileURLWithPath: filedPath),
+            fileName: "Notes.pdf",
+            destinationFolder: "Documents",
+            beforePath: renamedPath,
+            afterPath: filedPath
+        )
+        // Newest-first Activity order.
+        let entries = [moved, renamed]
+        let exists: Set<String> = [filedPath]
+        let url = ActivityLog.revealURL(for: renamed, in: entries, fileExists: { exists.contains($0) })
+        #expect(url?.path == filedPath)
+    }
+
+    @Test
+    func revealURLFollowsTitleCaseThenContentAwareThenMove() {
+        let watch = "/tmp/intake-reveal/Downloads"
+        let titlePath = "\(watch)/Notes.pdf"
+        let contentPath = "\(watch)/Q3 Notes.pdf"
+        let filedPath = "\(watch)/Documents/Q3 Notes.pdf"
+        let titleCase = ActivityEntry(
+            kind: .renamed,
+            detail: "Renamed a to Notes.pdf",
+            url: URL(fileURLWithPath: titlePath),
+            fileName: "Notes.pdf",
+            beforePath: "\(watch)/notes.pdf",
+            afterPath: titlePath,
+            renameSource: .titleCase
+        )
+        let contentAware = ActivityEntry(
+            kind: .renamed,
+            detail: "Renamed Notes.pdf to Q3 Notes.pdf",
+            url: URL(fileURLWithPath: contentPath),
+            fileName: "Q3 Notes.pdf",
+            beforePath: titlePath,
+            afterPath: contentPath,
+            renameSource: .contentAware
+        )
+        let moved = ActivityEntry(
+            kind: .moved,
+            detail: "Moved Q3 Notes.pdf to Documents",
+            url: URL(fileURLWithPath: filedPath),
+            fileName: "Q3 Notes.pdf",
+            destinationFolder: "Documents",
+            beforePath: contentPath,
+            afterPath: filedPath
+        )
+        let entries = [moved, contentAware, titleCase]
+        let exists: Set<String> = [filedPath]
+        let url = ActivityLog.revealURL(for: titleCase, in: entries, fileExists: { exists.contains($0) })
+        #expect(url?.path == filedPath)
+    }
+
+    @Test
+    func revealFallbackDirectoryWhenFileGone() {
+        let path = "/tmp/intake-reveal/Downloads/Documents/Gone.pdf"
+        let entry = ActivityEntry(
+            kind: .moved,
+            detail: "Moved Gone.pdf to Documents",
+            url: URL(fileURLWithPath: path),
+            fileName: "Gone.pdf",
+            afterPath: path
+        )
+        let parent = "/tmp/intake-reveal/Downloads/Documents"
+        let exists: Set<String> = [parent]
+        let dir = ActivityLog.revealFallbackDirectory(for: entry, fileExists: { exists.contains($0) })
+        #expect(dir?.path == parent)
+        #expect(ActivityLog.revealURL(for: entry, in: [entry], fileExists: { exists.contains($0) }) == nil)
+    }
+
+    @Test
+    func hasRevealablePathRequiresSomePath() {
+        #expect(ActivityEntry(kind: .skipped, detail: "x", fileName: "x").hasRevealablePath == false)
+        #expect(
+            ActivityEntry(
+                kind: .moved,
+                detail: "x",
+                fileName: "x",
+                afterPath: "/tmp/x"
+            ).hasRevealablePath
+        )
+    }
+}
