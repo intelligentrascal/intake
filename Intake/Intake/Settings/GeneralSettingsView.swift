@@ -264,7 +264,7 @@ private struct WatchFolderRow: View {
                     Button("Change Folder…") {
                         model.changeWatchFolder(id: controller.profileID)
                     }
-                    Button(profile.isPaused ? "Resume Watching" : "Pause Watching") {
+                    Button(profile.isPaused ? "Resume Organizing" : "Pause Organizing") {
                         model.setWatchFolderPaused(!profile.isPaused, for: controller.profileID)
                     }
                     Divider()
