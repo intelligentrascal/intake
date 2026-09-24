@@ -23,6 +23,13 @@ public struct CleanupScanner: Sendable {
     /// skipped rather than offered for cleanup.
     public var mountedVolumeURLs: [URL]
     public var packageReceiptResolver: PackageReceiptResolver
+    /// The "arrival" date used for both installer files and installed apps
+    /// when deciding whether an app is newer than its installer. Injectable
+    /// so tests can fabricate an added-to-directory date, which isn't
+    /// something a test can reliably set on disk. Defaults to
+    /// `InstalledAppMatcher.defaultDate` (added-to-directory, then creation,
+    /// then content-modification date).
+    public var installDateProvider: @Sendable (URL, FileManager) -> Date
 
     public init(
         watchFolder: URL,
@@ -34,7 +41,8 @@ public struct CleanupScanner: Sendable {
         hashCache: DuplicateHashCache = DuplicateHashCache(),
         applicationsFolders: [URL] = InstalledAppMatcher.defaultApplicationsFolders(),
         mountedVolumeURLs: [URL] = [],
-        packageReceiptResolver: PackageReceiptResolver = PackageReceiptResolver()
+        packageReceiptResolver: PackageReceiptResolver = PackageReceiptResolver(),
+        installDateProvider: @escaping @Sendable (URL, FileManager) -> Date = InstalledAppMatcher.defaultDate
     ) {
         self.watchFolder = watchFolder
         self.thresholdDays = thresholdDays
@@ -46,6 +54,7 @@ public struct CleanupScanner: Sendable {
         self.applicationsFolders = applicationsFolders
         self.mountedVolumeURLs = mountedVolumeURLs
         self.packageReceiptResolver = packageReceiptResolver
+        self.installDateProvider = installDateProvider
     }
 
     /// Key used to look up/store a snooze for `url`. Symlink-resolved and
@@ -71,7 +80,11 @@ public struct CleanupScanner: Sendable {
         }
 
         let duplicateOriginals = duplicateOriginals(among: infos, fileManager: fileManager)
-        let installedApps = InstalledAppMatcher.installedApps(in: applicationsFolders, fileManager: fileManager)
+        let installedApps = InstalledAppMatcher.installedApps(
+            in: applicationsFolders,
+            fileManager: fileManager,
+            dateProvider: installDateProvider
+        )
 
         var results: [CleanupCandidate] = []
         for (url, info) in infos {
@@ -107,7 +120,6 @@ public struct CleanupScanner: Sendable {
             }
             if let match = installedAppMatch(
                 for: url,
-                installerDate: info.modificationDate,
                 installedApps: installedApps,
                 fileManager: fileManager
             ) {
@@ -169,18 +181,24 @@ public struct CleanupScanner: Sendable {
 
     /// The installed app an installer file matches, if its name (or, for
     /// `.pkg`/`.mpkg`, its install receipt) points at an app in
-    /// `applicationsFolders` that's newer than the installer itself.
+    /// `applicationsFolders` that's newer than the installer itself. Both
+    /// sides of the comparison go through `installDateProvider` rather than
+    /// raw content-modification date — see its doc comment for why.
     private func installedAppMatch(
         for url: URL,
-        installerDate: Date,
         installedApps: [InstalledAppMatcher.InstalledApp],
         fileManager: FileManager
     ) -> InstalledAppMatcher.InstalledApp? {
-        guard Self.installerExtensions.contains(url.pathExtension.lowercased()) else { return nil }
-
         let ext = url.pathExtension.lowercased()
+        guard Self.installerExtensions.contains(ext) else { return nil }
+        let installerDate = installDateProvider(url, fileManager)
+
         if ext == "pkg" || ext == "mpkg",
-           let receiptMatch = packageReceiptResolver.installedApp(forPackageAt: url, fileManager: fileManager),
+           let receiptMatch = packageReceiptResolver.installedApp(
+               forPackageAt: url,
+               fileManager: fileManager,
+               dateProvider: installDateProvider
+           ),
            receiptMatch.date > installerDate
         {
             return receiptMatch

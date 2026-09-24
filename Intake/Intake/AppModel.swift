@@ -71,6 +71,7 @@ final class AppModel {
     var cleanupCandidates: [CleanupCandidate]
     /// Kept across scans so an unchanged file's duplicate hash isn't recomputed.
     private let cleanupHashCache = DuplicateHashCache()
+    private let cleanupPackageReceiptResolver = PackageReceiptResolver()
     var cleanupThresholdDays: Int {
         didSet {
             UserDefaults.standard.set(cleanupThresholdDays, forKey: SettingsKey.cleanupDays)
@@ -992,7 +993,8 @@ final class AppModel {
             ignorePolicy: ignorePolicy,
             managedFolderNames: managedFolderNames,
             hashCache: cleanupHashCache,
-            mountedVolumeURLs: mountedVolumeURLs()
+            mountedVolumeURLs: mountedVolumeURLs(),
+            packageReceiptResolver: cleanupPackageReceiptResolver
         ).candidates()
     }
 

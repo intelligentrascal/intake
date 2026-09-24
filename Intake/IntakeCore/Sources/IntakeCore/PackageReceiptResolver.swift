@@ -10,24 +10,81 @@ import Foundation
 /// returns `nil` rather than throwing, so callers fall back to name-based
 /// matching, matching the ticket's "receipts when readable, otherwise name
 /// match" scope.
-public struct PackageReceiptResolver: Sendable {
+///
+/// The identifier lookup (an `xar` extraction plus two `pkgutil` spawns) is
+/// cached by path/size/modification-date, like `DuplicateHashCache`, so
+/// repeated Cleanup scans don't re-spawn processes for a `.pkg` that hasn't
+/// changed. Reference-typed so one instance can be kept across scans (e.g.
+/// by `AppModel`) while `CleanupScanner` itself stays a plain value type.
+public final class PackageReceiptResolver: @unchecked Sendable {
+    private struct Key: Hashable {
+        let path: String
+        let size: Int64
+        let modified: Date
+    }
+
+    private let lock = NSLock()
+    /// Cached resolved app bundle URL for a package's identifier — `nil`
+    /// means "looked it up, no receipt match found," which is itself worth
+    /// caching so an unmatched `.pkg` isn't re-spawned every scan either.
+    private var resolvedAppURLs: [Key: URL?] = [:]
+
     public init() {}
 
     /// The installed app this package's receipt says it put on disk, if the
     /// receipt database is readable and has a matching, still-installed
-    /// package identifier.
+    /// package identifier. `dateProvider` decides the returned app's `date`,
+    /// same as `InstalledAppMatcher` — it's read fresh on every call (never
+    /// cached), since the cache only covers the package-to-app-path lookup,
+    /// not whether that app has since changed.
     public func installedApp(
         forPackageAt packageURL: URL,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        dateProvider: @Sendable (URL, FileManager) -> Date = InstalledAppMatcher.defaultDate
     ) -> InstalledAppMatcher.InstalledApp? {
+        guard let appURL = resolvedAppURL(forPackageAt: packageURL, fileManager: fileManager) else {
+            return nil
+        }
+        return InstalledAppMatcher.installedApp(at: appURL, fileManager: fileManager, dateProvider: dateProvider)
+    }
+
+    private func resolvedAppURL(forPackageAt packageURL: URL, fileManager: FileManager) -> URL? {
+        guard let key = cacheKey(for: packageURL, fileManager: fileManager) else {
+            // Can't even read the package's own size/mtime — nothing to
+            // cache against, so just resolve it directly this one time.
+            return resolveAppURL(for: packageURL)
+        }
+
+        lock.lock()
+        if let cached = resolvedAppURLs[key] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let resolved = resolveAppURL(for: packageURL)
+        lock.lock()
+        resolvedAppURLs[key] = resolved
+        lock.unlock()
+        return resolved
+    }
+
+    private func cacheKey(for url: URL, fileManager: FileManager) -> Key? {
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) else {
+            return nil
+        }
+        guard let size = values.fileSize else { return nil }
+        let modified = values.contentModificationDate ?? .distantPast
+        return Key(path: url.path, size: Int64(size), modified: modified)
+    }
+
+    private func resolveAppURL(for packageURL: URL) -> URL? {
         guard let identifier = packageIdentifier(at: packageURL) else { return nil }
         guard let (volume, location) = installLocation(forIdentifier: identifier) else { return nil }
         guard let appPath = appBundlePath(forIdentifier: identifier, volume: volume, location: location) else {
             return nil
         }
-        let appURL = URL(fileURLWithPath: appPath)
-        return InstalledAppMatcher.installedApps(in: [appURL.deletingLastPathComponent()], fileManager: fileManager)
-            .first { $0.url.standardizedFileURL == appURL.standardizedFileURL }
+        return URL(fileURLWithPath: appPath)
     }
 
     /// Extracts the package's `Distribution` (or legacy `PackageInfo`) member

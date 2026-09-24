@@ -11,8 +11,9 @@ public enum InstalledAppMatcher {
         public var displayName: String
         /// `CFBundleName`, falling back to the bundle's filename.
         public var bundleName: String
-        /// Added-to-directory date, falling back to content modification date —
-        /// the point the installed copy of the app appeared or last changed.
+        /// The point the installed copy of the app appeared, per
+        /// `defaultDate` (or an injected provider) — added-to-directory date,
+        /// then creation date, then content modification date as last resort.
         public var date: Date
 
         public init(url: URL, displayName: String, bundleName: String, date: Date) {
@@ -31,11 +32,35 @@ public enum InstalledAppMatcher {
         ]
     }
 
+    /// The point a file or app bundle "arrived" where it now sits:
+    /// added-to-directory date first (set when the item lands in a folder —
+    /// e.g. a Finder-dragged app landing in `/Applications`, or a download
+    /// landing in the watch folder), then creation date, then content
+    /// modification date as a last resort. Content modification date alone
+    /// is unreliable here: Finder preserves a dragged app's original
+    /// (vendor build) mtime, and browsers often set a downloaded file's
+    /// mtime from the server's `Last-Modified` header rather than when it
+    /// actually arrived.
+    public static func defaultDate(for url: URL, fileManager: FileManager = .default) -> Date {
+        let values = try? url.resourceValues(forKeys: [
+            .addedToDirectoryDateKey,
+            .creationDateKey,
+            .contentModificationDateKey,
+        ])
+        return values?.addedToDirectoryDate
+            ?? values?.creationDate
+            ?? values?.contentModificationDate
+            ?? .distantPast
+    }
+
     /// Top-level `.app` bundles in the given folders (non-recursive), with the
-    /// metadata needed to match them against installer files.
+    /// metadata needed to match them against installer files. `dateProvider`
+    /// is injectable so tests (which can't reliably set an added-to-directory
+    /// date on a fake Applications folder) can fabricate arrival dates.
     public static func installedApps(
         in folders: [URL],
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        dateProvider: @Sendable (URL, FileManager) -> Date = InstalledAppMatcher.defaultDate
     ) -> [InstalledApp] {
         var apps: [InstalledApp] = []
         for folder in folders {
@@ -44,12 +69,13 @@ public enum InstalledAppMatcher {
                 includingPropertiesForKeys: [
                     .isDirectoryKey,
                     .contentModificationDateKey,
+                    .creationDateKey,
                     .addedToDirectoryDateKey,
                 ],
                 options: [.skipsHiddenFiles]
             )) ?? []
             for url in contents where url.pathExtension.lowercased() == "app" {
-                if let app = installedApp(at: url, fileManager: fileManager) {
+                if let app = installedApp(at: url, fileManager: fileManager, dateProvider: dateProvider) {
                     apps.append(app)
                 }
             }
@@ -57,7 +83,13 @@ public enum InstalledAppMatcher {
         return apps
     }
 
-    private static func installedApp(at url: URL, fileManager: FileManager) -> InstalledApp? {
+    /// Builds an `InstalledApp` for the `.app` bundle at `url`, or `nil` if
+    /// nothing exists there.
+    public static func installedApp(
+        at url: URL,
+        fileManager: FileManager = .default,
+        dateProvider: @Sendable (URL, FileManager) -> Date = InstalledAppMatcher.defaultDate
+    ) -> InstalledApp? {
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             return nil
@@ -76,13 +108,7 @@ public enum InstalledAppMatcher {
                 bundleName = name
             }
         }
-        // Content modification date is the reliable signal here: dragging an
-        // app into place (or a `.pkg` payload writing it) touches the bundle,
-        // while `addedToDirectoryDate` reflects the OS's own bookkeeping and
-        // isn't something callers (or tests, with a fake Applications
-        // folder) can control the same way.
-        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .addedToDirectoryDateKey])
-        let date = values?.contentModificationDate ?? values?.addedToDirectoryDate ?? .distantPast
+        let date = dateProvider(url, fileManager)
         return InstalledApp(url: url, displayName: displayName, bundleName: bundleName, date: date)
     }
 
