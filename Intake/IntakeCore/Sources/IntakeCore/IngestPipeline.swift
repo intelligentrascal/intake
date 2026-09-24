@@ -69,14 +69,16 @@ public struct IngestPipeline: Sendable {
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws -> (url: URL, entries: [ActivityEntry]) {
-        let source = sourceURL.standardizedFileURL
-        let sourceFolder = source.deletingLastPathComponent().standardizedFileURL
+        let requested = sourceURL.standardizedFileURL
+        let sourceFolder = requested.deletingLastPathComponent().standardizedFileURL
         guard sourceFolder == watchFolder.standardizedFileURL else {
-            return (source, [])
+            return (requested, [])
         }
-        guard fileManager.fileExists(atPath: source.path) else {
-            return (source, [])
+        guard fileManager.fileExists(atPath: requested.path) else {
+            return (requested, [])
         }
+        // Work from the name on disk: a stale spelling must not collide with itself.
+        let source = FileIdentity.onDiskURL(for: requested, fileManager: fileManager)
         // Never rename an empty placeholder (false-stable / still-writing download).
         guard DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) else {
             return (source, [])
@@ -92,6 +94,7 @@ public struct IngestPipeline: Sendable {
             return (source, [])
         }
 
+        // Only a *different* file may force a collision suffix.
         var existing = existingNames(in: watchFolder, fileManager: fileManager)
         existing.remove(source.lastPathComponent)
         let uniqueName = Self.uniqued(fileName: proposed, among: existing)
@@ -124,14 +127,16 @@ public struct IngestPipeline: Sendable {
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws -> [ActivityEntry] {
-        let source = sourceURL.standardizedFileURL
-        let sourceFolder = source.deletingLastPathComponent().standardizedFileURL
+        let requested = sourceURL.standardizedFileURL
+        let sourceFolder = requested.deletingLastPathComponent().standardizedFileURL
         guard sourceFolder == watchFolder.standardizedFileURL else {
             return []
         }
-        guard fileManager.fileExists(atPath: source.path) else {
+        guard fileManager.fileExists(atPath: requested.path) else {
             return []
         }
+        // File under the name on disk (keeps the rename's casing for stale URLs).
+        let source = FileIdentity.onDiskURL(for: requested, fileManager: fileManager)
         // Never file an empty placeholder (false-stable / still-writing download).
         guard DownloadWriteGate.allowsOrganizeOrRename(at: source, fileManager: fileManager) else {
             return []
@@ -193,8 +198,14 @@ public struct IngestPipeline: Sendable {
         return entries
     }
 
+    /// Names compare case-insensitively, like APFS: `report.pdf` holds `Report.pdf`.
+    /// Callers remove the moving file's own name from `existing` first.
     public static func uniqued(fileName: String, among existing: Set<String>) -> String {
-        if !existing.contains(fileName) {
+        let taken = Set(existing.map(FileIdentity.collisionKey(forFileName:)))
+        func isTaken(_ name: String) -> Bool {
+            taken.contains(FileIdentity.collisionKey(forFileName: name))
+        }
+        if !isTaken(fileName) {
             return fileName
         }
         let url = URL(fileURLWithPath: fileName)
@@ -203,7 +214,7 @@ public struct IngestPipeline: Sendable {
         var index = 2
         while true {
             let candidate = ext.isEmpty ? "\(base) \(index)" : "\(base) \(index).\(ext)"
-            if !existing.contains(candidate) {
+            if !isTaken(candidate) {
                 return candidate
             }
             index += 1

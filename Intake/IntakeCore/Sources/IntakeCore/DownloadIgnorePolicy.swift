@@ -8,6 +8,7 @@ public enum FileEventKind: String, Sendable, Equatable {
 }
 
 public struct DownloadIgnorePolicy: Sendable, Equatable {
+    /// Lowercased. Renaming an in-flight partial orphans it next to the final file.
     public static let incompleteExtensions: Set<String> = [
         "download",
         "crdownload",
@@ -16,6 +17,14 @@ public struct DownloadIgnorePolicy: Sendable, Equatable {
         "tmp",
         "temp",
         "downloading",
+        "duckload", // DuckDuckGo
+        "opdownload", // Opera (legacy)
+        "crswap", // Chrome File System Access
+        "!ut", // µTorrent
+        "!qb", // qBittorrent
+        "bc!", // BitComet
+        "aria2", // aria2 / Motrix control file
+        "ytdl", // yt-dlp
     ]
 
     public var managedFolderNames: Set<String>
