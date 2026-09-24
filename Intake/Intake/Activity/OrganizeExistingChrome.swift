@@ -114,6 +114,15 @@ struct OrganizeExistingPreviewSheet: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+            if model.organizeReadingContents {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Reading files on this Mac for content-aware names…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(20)
     }
@@ -131,7 +140,7 @@ struct OrganizeExistingPreviewSheet: View {
                 model.confirmOrganizePreview()
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(model.organizeSelectedCount == 0)
+            .disabled(model.organizeSelectedCount == 0 || model.organizeReadingContents)
         }
         .padding(20)
     }
@@ -189,6 +198,11 @@ private struct OrganizePreviewRow: View {
                 Text(item.plan.renamedFileName)
                 if item.plan.needsRename {
                     Text(item.plan.sourceURL.lastPathComponent)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if item.contentAwareFileName != nil {
+                    Label("Named from contents", systemImage: "text.viewfinder")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

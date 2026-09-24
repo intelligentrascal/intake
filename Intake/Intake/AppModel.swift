@@ -156,6 +156,14 @@ final class AppModel {
     var organizeExcludedURLs: Set<URL> = []
     /// The watch folder the current Organize Existing run targets; `nil` = all.
     var organizeTargetProfileID: String?
+    /// True while the preview is reading eligible files for content-aware names.
+    var organizeReadingContents = false
+    /// On-device content-aware rename (GH-32). Off by default.
+    var contentAwareRename: ContentAwareRenameSettings {
+        didSet { contentAwareRename.save(to: .standard) }
+    }
+    /// Refreshed when the AI pane appears and before each use.
+    var contentAwareAvailability: OnDeviceModelAvailability = .current
     var snoozedUntil: [String: Date] {
         didSet { persistSnooze() }
     }
@@ -188,6 +196,8 @@ final class AppModel {
     private var organizeCancelRequested = false
     @ObservationIgnored
     private var organizeTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var organizeContentTask: Task<Void, Never>?
     @ObservationIgnored
     private let notificationDigestService = NotificationDigestService()
 
@@ -222,6 +232,7 @@ final class AppModel {
         activity = Self.loadActivity()
         undoService = UndoService.load(from: .standard)
         openRouterSpendTracker = OpenRouterSpendTracker.load(from: .standard)
+        contentAwareRename = ContentAwareRenameSettings.load(from: .standard)
         snoozedUntil = Self.loadSnooze()
         cleanupCandidates = []
         launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
@@ -672,15 +683,12 @@ final class AppModel {
             return
         }
         organizeTargetProfileID = profileID
-        var groups: [OrganizePreviewGroup] = []
-        var skipped: [OrganizeExistingSkip] = []
-        for controller in organizeTargets(for: profileID) {
-            let scan = OrganizeExistingScanner(watchFolder: controller.folder).scan()
-            let preview = OrganizeExistingPreviewBuilder.build(scan: scan, pipeline: controller.pipeline)
-            groups.append(contentsOf: preview.groups)
-            skipped.append(contentsOf: preview.skipped)
+        organizeContentTask?.cancel()
+        organizeReadingContents = false
+        let scans = organizeTargets(for: profileID).map { controller in
+            (controller: controller, scan: OrganizeExistingScanner(watchFolder: controller.folder).scan())
         }
-        let preview = OrganizeExistingPreview(groups: groups, skipped: skipped)
+        let preview = Self.combinedPreview(scans, contentAwareNames: [:])
         organizePreview = preview
         organizeExcludedURLs = []
         openActivity()
@@ -689,9 +697,100 @@ final class AppModel {
             return
         }
         organizePreviewPresented = true
+        readContentAwareNames(for: scans)
+    }
+
+    private static func combinedPreview(
+        _ scans: [(controller: WatchFolderController, scan: OrganizeExistingScan)],
+        contentAwareNames: [URL: String]
+    ) -> OrganizeExistingPreview {
+        var groups: [OrganizePreviewGroup] = []
+        var skipped: [OrganizeExistingSkip] = []
+        for (controller, scan) in scans {
+            let preview = OrganizeExistingPreviewBuilder.build(
+                scan: scan,
+                pipeline: controller.pipeline,
+                contentAwareNames: contentAwareNames
+            )
+            groups.append(contentsOf: preview.groups)
+            skipped.append(contentsOf: preview.skipped)
+        }
+        return OrganizeExistingPreview(groups: groups, skipped: skipped)
+    }
+
+    /// With content-aware rename on, reads eligible files on this Mac and
+    /// rebuilds the preview so it shows (and Apply uses) their content names.
+    private func readContentAwareNames(
+        for scans: [(controller: WatchFolderController, scan: OrganizeExistingScan)]
+    ) {
+        guard let renamer = contentAwareRenamer() else { return }
+        let normalizer = FileNameNormalizer()
+        let candidates = scans.flatMap(\.scan.eligible)
+            .filter { renamer.isEligible($0) }
+            .prefix(Self.organizeContentAwareLimit)
+        guard !candidates.isEmpty else { return }
+        organizeReadingContents = true
+        organizeContentTask = Task { @MainActor in
+            var names: [URL: String] = [:]
+            for url in candidates {
+                guard !Task.isCancelled else { return }
+                let titleCase = normalizer.proposedFileName(for: url)
+                if let name = await renamer.proposal(for: url, currentFileName: titleCase).fileName {
+                    names[url.standardizedFileURL] = name
+                }
+            }
+            guard !Task.isCancelled else { return }
+            self.organizeReadingContents = false
+            guard self.organizePreviewPresented else { return }
+            self.organizePreview = Self.combinedPreview(scans, contentAwareNames: names)
+        }
+    }
+
+    /// Cap on files read for one Organize Existing preview; the rest keep
+    /// Title Case names.
+    static let organizeContentAwareLimit = 40
+
+    /// The content-aware renamer when the feature is on and the on-device
+    /// model can run on this Mac; `nil` otherwise (files keep Title Case).
+    func contentAwareRenamer() -> ContentAwareRenamer? {
+        guard contentAwareRename.isEnabled else { return nil }
+        contentAwareAvailability = .current
+        guard contentAwareAvailability.isAvailable else { return nil }
+        return ContentAwareRenamer(
+            settings: contentAwareRename,
+            extractor: OnDeviceTextExtractor(),
+            namer: FoundationModelsContentNamer()
+        )
+    }
+
+    /// "Try on a file…": what content-aware rename would call `url`, without
+    /// renaming anything. Runs even while the master toggle is off.
+    func tryContentAwareName(for url: URL) async -> String {
+        contentAwareAvailability = .current
+        if let message = contentAwareAvailability.message {
+            return message
+        }
+        var settings = contentAwareRename
+        settings.isEnabled = true
+        let renamer = ContentAwareRenamer(
+            settings: settings,
+            extractor: OnDeviceTextExtractor(),
+            namer: FoundationModelsContentNamer()
+        )
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        let titleCase = FileNameNormalizer().proposedFileName(for: url)
+        switch await renamer.proposal(for: url, currentFileName: titleCase) {
+        case .proposed(let name):
+            return "Would rename to “\(name)”."
+        case .fallback(let reason):
+            return "Keeps “\(titleCase)”. \(reason.reasonText)"
+        }
     }
 
     func confirmOrganizePreview() {
+        organizeContentTask?.cancel()
+        organizeReadingContents = false
         organizePreviewPresented = false
         guard let preview = organizePreview else { return }
         let selectedItems = preview.groups.flatMap(\.items).filter {
@@ -703,6 +802,8 @@ final class AppModel {
     /// Cancel changes nothing: the preview never touched disk, so dismissing it
     /// is enough.
     func cancelOrganizePreview() {
+        organizeContentTask?.cancel()
+        organizeReadingContents = false
         organizePreviewPresented = false
         organizePreview = nil
         organizeExcludedURLs = []

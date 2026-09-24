@@ -316,3 +316,19 @@ public struct ContentRenameTracker: Equatable, Sendable {
         jobs.removeAll()
     }
 }
+
+extension ContentNameFallback {
+    /// Plain-language reason for "Try on a file…".
+    public var reasonText: String {
+        switch self {
+        case .notEligible: "This file type isn’t selected for content-aware rename."
+        case .tooLarge: "The file is larger than 50 MB, so Intake doesn’t read it."
+        case .unreadable: "The file is empty or missing."
+        case .noText: "No readable text was found (encrypted PDFs are skipped)."
+        case .rejected(.noResult): "The on-device model didn’t return a name."
+        case .rejected(.lowConfidence): "The on-device model wasn’t confident enough."
+        case .rejected(.empty): "The template came out empty for this file."
+        case .rejected(.generic): "The result was too generic to be useful."
+        }
+    }
+}
