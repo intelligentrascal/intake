@@ -21,6 +21,9 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
     public var beforePath: String?
     /// Absolute path after Intake’s change (undo).
     public var afterPath: String?
+    /// The file's source domain, when where-from metadata named one. Optional
+    /// for older Activity rows and for files with no known source.
+    public var sourceDomain: String?
 
     public var verb: String {
         switch kind {
@@ -57,7 +60,8 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         fileName: String? = nil,
         destinationFolder: String? = nil,
         beforePath: String? = nil,
-        afterPath: String? = nil
+        afterPath: String? = nil,
+        sourceDomain: String? = nil
     ) {
         self.id = id
         self.date = date
@@ -68,5 +72,6 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         self.destinationFolder = destinationFolder
         self.beforePath = beforePath
         self.afterPath = afterPath
+        self.sourceDomain = sourceDomain
     }
 }

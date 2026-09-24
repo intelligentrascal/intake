@@ -14,23 +14,34 @@ public enum DefaultTaxonomy: Sendable {
         managedFolderNames.union(Set(rules.map(\.folderName)))
     }
 
+    /// Facts-based matching: the primary overload once a file's name, size and
+    /// source are known. First enabled matching rule wins by list order.
     public static func matchingRule(
-        forExtension ext: String,
+        for facts: FileFacts,
         rules: [RoutingRule] = rules
     ) -> RoutingRule? {
-        let key = ext.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return nil }
-        for rule in rules where rule.isEnabled && rule.extensions.contains(key) {
+        for rule in rules where rule.isEnabled && rule.matches(facts) {
             return rule
         }
         return nil
     }
 
     public static func matchingRule(
+        forExtension ext: String,
+        rules: [RoutingRule] = rules
+    ) -> RoutingRule? {
+        let key = ext.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return nil }
+        return matchingRule(for: FileFacts(name: "file.\(key)", fileExtension: key), rules: rules)
+    }
+
+    /// URL-only overload: matches on name and extension with no known source
+    /// or size, so `sourceDomain` and size conditions never match.
+    public static func matchingRule(
         for url: URL,
         rules: [RoutingRule] = rules
     ) -> RoutingRule? {
-        matchingRule(forExtension: url.pathExtension, rules: rules)
+        matchingRule(for: FileFacts(fileURL: url), rules: rules)
     }
 
     public static func category(

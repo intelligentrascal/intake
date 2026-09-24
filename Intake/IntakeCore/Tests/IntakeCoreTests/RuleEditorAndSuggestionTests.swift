@@ -142,6 +142,26 @@ struct RulePersistenceRoundTripTests {
     }
 
     @Test
+    func decodesA12RuleWithNoConditionsKeyAsAnEmptyList() throws {
+        // A rule persisted before conditions existed, with no "conditions" key at all.
+        let legacyJSON = """
+        {
+            "id": "documents",
+            "folderName": "Documents",
+            "systemImage": "doc.text",
+            "extensions": ["pdf", "doc"],
+            "isEnabled": true,
+            "isBuiltIn": true,
+            "builtInCategory": "documents"
+        }
+        """
+        let decoded = try JSONDecoder().decode(RoutingRule.self, from: Data(legacyJSON.utf8))
+        #expect(decoded.conditions.isEmpty)
+        #expect(decoded.extensions == ["pdf", "doc"])
+        #expect(decoded.isValid)
+    }
+
+    @Test
     func mergesBuiltInsMissingFromOlderSavedLists() throws {
         let customOnly = [RoutingRule.custom(folderName: "Design", extensions: ["ai"])]
         let data = try RulePersistence.encode(customOnly)

@@ -7,6 +7,8 @@ public struct IngestPlan: Equatable, Sendable {
     public var destinationFolderName: String
     public var destinationDirectory: URL
     public var destinationURL: URL
+    /// The file's source domain, when the where-from metadata on disk names one.
+    public var sourceDomain: String?
 
     public var needsRename: Bool {
         sourceURL.lastPathComponent != renamedFileName
@@ -30,7 +32,8 @@ public struct IngestPipeline: Sendable {
 
     public func plan(
         for sourceURL: URL,
-        existingNamesInDestination: Set<String> = []
+        existingNamesInDestination: Set<String> = [],
+        fileManager: FileManager = .default
     ) -> IngestPlan? {
         let sourceFolder = sourceURL.deletingLastPathComponent().standardizedFileURL
         guard sourceFolder == watchFolder.standardizedFileURL else {
@@ -41,7 +44,8 @@ public struct IngestPipeline: Sendable {
             fileName: normalizer.proposedFileName(for: sourceURL),
             among: existingNamesInDestination
         )
-        let match = DefaultTaxonomy.matchingRule(for: sourceURL, rules: rules)
+        let facts = FileFacts.onDisk(at: sourceURL, fileManager: fileManager)
+        let match = DefaultTaxonomy.matchingRule(for: facts, rules: rules)
         let category = match?.category ?? .other
         let destinationFolderName = match?.folderName ?? FileCategory.other.folderName
         let destinationDirectory = watchFolder.appendingPathComponent(
@@ -58,7 +62,8 @@ public struct IngestPipeline: Sendable {
             category: category,
             destinationFolderName: destinationFolderName,
             destinationDirectory: destinationDirectory,
-            destinationURL: destinationURL
+            destinationURL: destinationURL,
+            sourceDomain: facts.sourceHost
         )
     }
 
@@ -147,7 +152,8 @@ public struct IngestPipeline: Sendable {
             fileManager: fileManager
         )
 
-        let match = DefaultTaxonomy.matchingRule(for: source, rules: rules)
+        let facts = FileFacts.onDisk(at: source, fileManager: fileManager)
+        let match = DefaultTaxonomy.matchingRule(for: facts, rules: rules)
         let destinationFolderName = match?.folderName ?? FileCategory.other.folderName
         let destinationDirectory = watchFolder.appendingPathComponent(
             destinationFolderName,
@@ -176,7 +182,8 @@ public struct IngestPipeline: Sendable {
                 fileName: destination.lastPathComponent,
                 destinationFolder: destinationFolderName,
                 beforePath: source.path,
-                afterPath: destination.path
+                afterPath: destination.path,
+                sourceDomain: facts.sourceHost
             ),
         ]
     }

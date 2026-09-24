@@ -42,7 +42,21 @@ Users discover Intake from the **Dock** (on by default) and the **menu bar** (on
 
 Users can edit rules: extensions, destination folder name, enable, order (drag), add/delete custom rules. Built-in categories keep a stable id; renaming a folder name applies to **new** routes only (existing folders are not mass-renamed). Conflicting extensions resolve by list order (first enabled match wins). Empty folders are never pre-created.
 
-The Rules pane also shows **on-device suggestions** from the watch-folder root histogram and Activity (skipped / Other). Accept creates or updates a persisted rule; Dismiss hides for 30 days; Never suppresses that extension until reset. Suggestions need repeating uncovered types (8 hits, or 5 in 14 days). Cold start is empty — no fake examples. Computation is local; no network; no file contents.
+### Rule conditions (v1.3)
+
+A rule can carry an optional list of **conditions**, all combined with AND, in addition to its extension set:
+
+- **Source domain** — matches the file's host or any parent domain, ignoring case (a rule for `bank.com` matches `secure.bank.com`).
+- **Name contains / starts with / matches wildcard** (`*`, `?`) — matches the file name without its extension, ignoring case.
+- **Size at least / at most** — matches by file size in bytes.
+
+A rule's extension set can be left empty to mean "any type," but only once it has at least one condition — a rule with no extensions and no conditions can't be saved. Conditions are edited in the rule editor's **Conditions** section, which also shows recently seen source domains as a hint. Rules saved before 1.3 decode with an empty condition list and behave exactly as before.
+
+**Source domain** comes from the where-from download metadata macOS/browsers already write on a file (the `kMDItemWhereFroms` extended attribute) — the first URL's host, or the referrer's host if the first has none. This is local file-system metadata only; Intake never makes a network request to resolve it. A file with no where-from metadata (e.g. copied in by hand) simply fails any source-domain condition and falls through to the next rule.
+
+First-enabled-rule-wins by list order is unchanged. The Rules pane flags rules that can **never be reached** because an earlier enabled rule already matches everything they would — reorder the more specific rule first to fix it. Activity rows show the file's source domain when known.
+
+The Rules pane also shows **on-device suggestions** from the watch-folder root histogram and Activity (skipped / Other). Accept creates or updates a persisted rule; Dismiss hides for 30 days; Never suppresses that extension until reset. Suggestions need repeating uncovered types (8 hits, or 5 in 14 days). Cold start is empty — no fake examples. Computation is local; no network; no file contents. Suggestions always propose extension-only rules.
 
 ## Core flows
 

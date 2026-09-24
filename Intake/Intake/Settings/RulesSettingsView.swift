@@ -21,6 +21,18 @@ struct RulesSettingsView: View {
                     Text("When two enabled rules list the same extension, the first in this list wins.")
                 }
             }
+            if !model.unreachableRules.isEmpty {
+                Section {
+                    ForEach(model.unreachableRules) { unreachable in
+                        Label(unreachable.summary, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(IntakeColor.warning)
+                    }
+                } header: {
+                    Text("Unreachable rules")
+                } footer: {
+                    Text("An earlier enabled rule already matches everything these would. Reorder them so the more specific rule comes first.")
+                }
+            }
             Section {
                 List(selection: $selectedRuleID) {
                     ForEach(model.rules) { rule in
@@ -138,14 +150,25 @@ private struct RuleRowView: View {
                 .frame(width: 28)
             Label(rule.folderName, systemImage: rule.systemImage)
                 .frame(minWidth: 140, alignment: .leading)
-            Text(rule.extensionsDisplay)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rule.extensions.isEmpty ? "Any type" : rule.extensionsDisplay)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                if !rule.conditions.isEmpty {
+                    Text(conditionsSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(minHeight: 28)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(rule.folderName), \(rule.extensionsDisplay)")
+        .accessibilityLabel("\(rule.folderName), \(rule.extensionsDisplay), \(conditionsSummary)")
+    }
+
+    private var conditionsSummary: String {
+        rule.conditions.map(\.summary).joined(separator: ", ")
     }
 }
 
@@ -203,6 +226,7 @@ struct RuleEditorSheet: View {
 
     @State private var folderName: String
     @State private var extensionsText: String
+    @State private var conditions: [RuleCondition]
     @State private var isEnabled: Bool
     @State private var errorMessage: String?
 
@@ -212,10 +236,12 @@ struct RuleEditorSheet: View {
         case .add:
             _folderName = State(initialValue: "")
             _extensionsText = State(initialValue: "")
+            _conditions = State(initialValue: [])
             _isEnabled = State(initialValue: true)
         case .edit(let rule):
             _folderName = State(initialValue: rule.folderName)
             _extensionsText = State(initialValue: rule.extensionsDisplay)
+            _conditions = State(initialValue: rule.conditions)
             _isEnabled = State(initialValue: rule.isEnabled)
         }
     }
@@ -224,12 +250,17 @@ struct RuleEditorSheet: View {
         NavigationStack {
             Form {
                 TextField("Folder", text: $folderName)
-                TextField("Extensions", text: $extensionsText, prompt: Text("psd, ai"))
+                TextField(
+                    "Extensions",
+                    text: $extensionsText,
+                    prompt: Text(conditions.isEmpty ? "psd, ai" : "psd, ai (or leave empty for any type)")
+                )
                 Toggle("Enabled", isOn: $isEnabled)
                 if let errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(IntakeColor.danger)
                 }
+                conditionsSection
             }
             .formStyle(.grouped)
             .navigationTitle(title)
@@ -242,7 +273,50 @@ struct RuleEditorSheet: View {
                 }
             }
         }
-        .frame(minWidth: 420, minHeight: 240)
+        .frame(minWidth: 480, minHeight: 320)
+    }
+
+    @ViewBuilder
+    private var conditionsSection: some View {
+        Section {
+            ForEach(Array(conditions.enumerated()), id: \.offset) { index, _ in
+                ConditionEditorRow(
+                    condition: Binding(
+                        get: { conditions[index] },
+                        set: { conditions[index] = $0 }
+                    ),
+                    sourceDomainHint: sourceDomainHint
+                )
+            }
+            .onDelete { offsets in
+                conditions.remove(atOffsets: offsets)
+            }
+            Menu {
+                ForEach(RuleCondition.Kind.allCases, id: \.self) { kind in
+                    Button(kind.label) {
+                        conditions.append(ConditionEditorRow.defaultCondition(for: kind))
+                    }
+                }
+            } label: {
+                Label("Add Condition", systemImage: "plus")
+            }
+        } header: {
+            Text("Conditions")
+        } footer: {
+            Text(conditionsFooter)
+        }
+    }
+
+    private var sourceDomainHint: String {
+        model.recentSourceDomains.first ?? "bank.com"
+    }
+
+    private var conditionsFooter: String {
+        var lines = ["All conditions must match (AND). With at least one condition, extensions can be left empty to match any type."]
+        if !model.recentSourceDomains.isEmpty {
+            lines.append("Recently seen: \(model.recentSourceDomains.joined(separator: ", ")).")
+        }
+        return lines.joined(separator: " ")
     }
 
     private var title: String {
@@ -258,10 +332,18 @@ struct RuleEditorSheet: View {
             errorMessage = error.description
             return
         case .success(let name):
-            switch ExtensionToken.parse(extensionsText) {
+            let trimmedExtensions = extensionsText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let extensionsResult: Result<Set<String>, ExtensionToken.ParseError> = trimmedExtensions.isEmpty
+                ? .success([])
+                : ExtensionToken.parse(extensionsText)
+            switch extensionsResult {
             case .failure(let error):
                 errorMessage = error.description
             case .success(let tokens):
+                guard !tokens.isEmpty || !conditions.isEmpty else {
+                    errorMessage = "Add at least one extension or condition."
+                    return
+                }
                 let id: String? = {
                     if case .edit(let rule) = item { return rule.id }
                     return nil
@@ -270,10 +352,109 @@ struct RuleEditorSheet: View {
                     id: id,
                     folderName: name,
                     extensions: tokens,
+                    conditions: conditions,
                     isEnabled: isEnabled
                 )
                 dismiss()
             }
         }
+    }
+}
+
+private struct ConditionEditorRow: View {
+    @Binding var condition: RuleCondition
+    var sourceDomainHint: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Picker("", selection: kindBinding) {
+                ForEach(RuleCondition.Kind.allCases, id: \.self) { kind in
+                    Text(kind.label).tag(kind)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 160)
+            valueField
+        }
+    }
+
+    @ViewBuilder
+    private var valueField: some View {
+        switch condition {
+        case .sourceDomain(let value):
+            TextField(sourceDomainHint, text: Binding(
+                get: { value },
+                set: { condition = .sourceDomain($0) }
+            ))
+        case .nameContains(let value):
+            TextField("invoice", text: Binding(
+                get: { value },
+                set: { condition = .nameContains($0) }
+            ))
+        case .nameStartsWith(let value):
+            TextField("IMG_", text: Binding(
+                get: { value },
+                set: { condition = .nameStartsWith($0) }
+            ))
+        case .nameMatchesWildcard(let value):
+            TextField("IMG_*", text: Binding(
+                get: { value },
+                set: { condition = .nameMatchesWildcard($0) }
+            ))
+        case .sizeAtLeast(let bytes):
+            SizeField(bytes: Binding(
+                get: { bytes },
+                set: { condition = .sizeAtLeast($0) }
+            ))
+        case .sizeAtMost(let bytes):
+            SizeField(bytes: Binding(
+                get: { bytes },
+                set: { condition = .sizeAtMost($0) }
+            ))
+        }
+    }
+
+    private var kindBinding: Binding<RuleCondition.Kind> {
+        Binding(
+            get: { condition.kind },
+            set: { condition = Self.defaultCondition(for: $0) }
+        )
+    }
+
+    static func defaultCondition(for kind: RuleCondition.Kind) -> RuleCondition {
+        switch kind {
+        case .sourceDomain: .sourceDomain("")
+        case .nameContains: .nameContains("")
+        case .nameStartsWith: .nameStartsWith("")
+        case .nameMatchesWildcard: .nameMatchesWildcard("")
+        case .sizeAtLeast: .sizeAtLeast(0)
+        case .sizeAtMost: .sizeAtMost(0)
+        }
+    }
+}
+
+/// A byte-size field edited in megabytes for readability; stores exact bytes.
+private struct SizeField: View {
+    @Binding var bytes: Int64
+    @State private var text: String = ""
+
+    var body: some View {
+        HStack(spacing: 4) {
+            TextField("0", text: $text)
+                .frame(width: 70)
+                .multilineTextAlignment(.trailing)
+                .onAppear { text = Self.formatted(bytes) }
+                .onChange(of: text) { _, newValue in
+                    guard let megabytes = Double(newValue) else { return }
+                    bytes = Int64((megabytes * 1_000_000).rounded())
+                }
+            Text("MB")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private static func formatted(_ bytes: Int64) -> String {
+        guard bytes != 0 else { return "" }
+        return String(format: "%g", Double(bytes) / 1_000_000)
     }
 }
