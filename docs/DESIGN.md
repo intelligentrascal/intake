@@ -11,7 +11,7 @@
 
 - Dock **on** by default (app icon: soft-catch document in a U cradle). Users may hide it; menu bar can remain. Dock click / launch / reopen bring **Settings** forward — not Activity. Activity is a separate window via **Open Activity**.
 - `MenuBarExtra` **on** by default for status + quick pause/resume, using a monochrome **template** soft-catch glyph (`isTemplate = true`). Watching vs Paused are distinct dense 16pt silhouettes (thick cradle; Paused uses two pause bars). Pause / Resume verbs stay on the menu; Settings uses **Automatic organizing**. No wait countdown in the menu bar.
-- `Settings` scene with `NavigationSplitView` sidebar (⌘, / Settings…). Sidebar 160–240pt; `List(selection:)` is the single source of truth (`selectedSettingsPane`). Grouped Forms without extra outer padding that clips tables.
+- `Settings` scene with a plain `HStack` sidebar (⌘, / Settings…) — not `NavigationSplitView` or `List(selection:)`, which never received clicks under the Settings scene. Sidebar 192pt of `.plain` Buttons that set `selectedSettingsPane` (the single source of truth); the container is an accessibility list ("Settings sections", `.isSelected` on the current row) and ↑/↓ move between panes; no "Intake" header. Keyboard shortcuts ⌘1–⌘7 jump between panes. Grouped Forms without extra outer padding that clips tables.
 - Prefer system `Form` / `List` / `Table` / `Inspector`, grouped form style, section footers
 - SF Symbols for chrome icons; custom app + menu-bar icons only
 - Respect light/dark, accent color, Dynamic Type, Reduce Motion
@@ -19,16 +19,17 @@
 
 ## Settings IA (v1)
 
-1. General — watch folders, organize existing, **Automatic organizing**, **Rename when download finishes**, **Wait before organizing** (per folder), Open at login, appearance in macOS (Dock / menu bar)
-2. Rules — editable taxonomy, drag order, custom rules, on-device suggestions
-3. Cleanup — duration threshold, include roots, decision queue
+1. General — watch folders (with status: Watching / Paused / Organizing off / Needs access), organize existing, **Automatic organizing**, **Rename when download finishes**, **Wait before organizing** (per folder), appearance in macOS (Dock / menu bar); Startup section with **Open at login**
+2. Rules — editable filing rules, drag order (⌥⌘↑/↓), custom rules, on-device suggestions; delete (⌘⌫) and reset confirm
+3. Cleanup — duration threshold (typeable), include roots, multi-select decision queue with context menu (Quick Look, Reveal in Finder, File Away, Keep, Delete…); double-click/Space for Quick Look
 4. Activity — audit trail of ingest and cleanup (open the dedicated window from here or the menu)
-5. AI — **Content-aware rename** section first (off by default: toggle, naming provider picker On this Mac | OpenRouter, PDFs / Images toggles, Name template field with a token caption, **Try on a File…** with inline result, warning-colored availability message when the selected provider can't run; footer copy differs by provider); then suggestions off by default; OpenRouter is the first real provider (Keychain key)
-6. About — license, links
+5. AI — **Content-aware rename** section first (off by default: toggle, naming provider picker On this Mac | OpenRouter, PDFs / Images toggles, Name template field with a token caption, **Try on a File…** with inline result); **OpenRouter setup** disclosure (key, base URL, model) shown only when OpenRouter is enabled; folder suggestions toggle; **Intake spend** section with reset; account/cost info shows whenever OpenRouter enabled; privacy text and "file contents leave this Mac" line are provider-conditional
+6. About — license, links; privacy text describes actual data flow based on selected naming provider
+7. Feedback — email field notes it's included in public GitHub issue
 
 ### Watch folders
 
-General → first section, titled **Watch folder** (one) or **Watch folders** (several). One row per folder: SF Symbol `folder` (or `exclamationmark.triangle.fill` in warning color when access is lost), display name, path in caption (middle-truncated, selectable), trailing status text (Watching / Paused / Needs access) and an `ellipsis.circle` borderless menu: Show in Finder, Change Folder…, Pause / Resume, Remove… (destructive, confirmed; disabled for the last folder). Lost access adds an inline row: “Intake can’t see this folder” + **Grant Access…**. Below the rows: **Add Folder…** — a menu with “Screenshots (<folder>)…” and “Choose Folder…” when the screenshot location isn't watched yet, otherwise a plain button. Refused folders (overlap, category folder, cap of 5) show an alert “Can’t use this folder” with the reason. The Organizing section edits one folder: with several, a **Folder** menu picker and a **Name** field sit at its top. Activity gets a toolbar **Folder** menu picker (All Folders / each folder) and Cleanup a **Watch folder** picker, both only with several folders. The rule editor gets an **Applies to** section (All watch folders / Specific folders with a toggle per folder).
+General → first section, titled **Watch folder** (one) or **Watch folders** (several). One row per folder: SF Symbol `folder` (or `exclamationmark.triangle.fill` in warning color when access is lost), display name, path in caption (middle-truncated, selectable), trailing status text (Watching / Paused / Organizing off / Needs access) and an `ellipsis.circle` borderless menu: Show in Finder, Change Folder…, Pause / Resume, Remove… (destructive, confirmed; disabled for the last folder). Lost access adds an inline row: “Intake can’t see this folder” + **Grant Access…**. Below the rows: **Add Folder…** — a menu with “Screenshots (<folder>)…” and “Choose Folder…” when the screenshot location isn’t watched yet, otherwise a plain button. Refused folders (overlap, category folder, cap of 5) show an alert “Can’t use this folder” with the reason. The Organizing section edits one folder: with several, a **Folder** menu picker and a **Name** field sit at its top. Activity gets a toolbar **Folder** menu picker (All Folders / each folder) and Cleanup a **Watch folder** picker, both only with several folders. The rule editor gets an **Applies to** section (All watch folders / Specific folders with a toggle per folder).
 
 ### Wait before organizing
 
@@ -46,7 +47,7 @@ Native **MeshGradient** atmosphere on the Activity background (near-black + `#1D
 
 ## Cleanup
 
-Queue of candidates with age, size, path. Primary: File Away. Secondary: Keep (snooze). Destructive: Delete (confirm with filename; Intake moves it to Trash). After actions, prune empty Intake-managed folders.
+Queue of candidates with age, size, path. Multi-select; context menu: Quick Look (or double-click/Space), Reveal in Finder, File Away, Keep (snooze), Delete (with confirmation; Intake moves to Trash). Actions on single or multiple selected items. After actions, prune empty Intake-managed folders. Delete key opens confirmation dialog.
 
 ## Tokens (product layer)
 

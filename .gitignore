@@ -41,3 +41,6 @@ design/smoke/
 .asc-notary/
 *.p8
 AuthKey*.p8
+
+# Impeccable design tooling scratch state
+.impeccable/
