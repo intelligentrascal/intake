@@ -44,3 +44,6 @@ AuthKey*.p8
 
 # Impeccable design tooling scratch state
 .impeccable/
+
+# /brag launch-video build output
+brag-output*/
