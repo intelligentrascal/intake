@@ -6,9 +6,9 @@
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-black?logo=apple)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-<a href="docs/media/intake-demo.mp4"><img src="docs/media/intake-demo.jpg" alt="Intake demo: messy download names become clean Title Case names" width="720"></a>
+<a href="docs/media/intake-demo.mp4"><img src="docs/media/intake-demo.gif" alt="Intake demo: a messy Downloads folder, then file names snapping into clean Title Case and being filed into folders" width="800"></a>
 
-▶ [Watch the 21-second demo](docs/media/intake-demo.mp4)
+▶ [Watch the full 21-second demo with sound](docs/media/intake-demo.mp4)
 
 ---
 
