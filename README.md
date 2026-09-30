@@ -44,7 +44,7 @@
 
 ### Download
 
-1. Get the latest notarized `Intake-x.y.z.dmg` from [**Releases**](https://github.com/intelligentrascal/intake/releases/latest).
+1. Get the latest notarized `Intake-1.3.4.dmg` from [**Releases**](https://github.com/intelligentrascal/intake/releases/latest).
 2. Open the DMG and drag **Intake** to Applications.
 3. Launch Intake and choose your Downloads folder when asked.
 
