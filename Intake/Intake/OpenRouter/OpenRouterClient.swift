@@ -189,7 +189,8 @@ nonisolated enum OpenRouterClient: Sendable {
                 model: configuration.model,
                 fileName: input.facts.name,
                 fileExtension: input.facts.fileExtension,
-                text: input.text
+                text: input.text,
+                hint: input.hint
             )
         } catch {
             return .failure(.parse)

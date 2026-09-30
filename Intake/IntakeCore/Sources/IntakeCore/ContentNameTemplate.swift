@@ -26,7 +26,7 @@ public enum ContentNameOutcome: Equatable, Sendable {
 /// Deterministic template renderer + validator for content-aware names.
 /// Tokens: `{date} {type} {organization} {subject} {original}`.
 public struct ContentNameTemplate: Equatable, Sendable {
-    public static let defaultTemplate = "{date} {type} {organization}"
+    public static let defaultTemplate = "{date} {type} {organization} {subject}"
     public static let defaultMinimumConfidence = 0.6
     /// Cap on the base name (extension not counted).
     public static let maximumBaseNameLength = 80

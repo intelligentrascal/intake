@@ -8,10 +8,15 @@ public struct ContentNamingInput: Equatable, Sendable {
 
     public var facts: FileFacts
     public var text: String
+    /// On-device hint for the namer (e.g. `PDF title metadata: …`). Not counted
+    /// against `maximumTextCharacters`.
+    public var hint: String?
 
-    public init(facts: FileFacts, text: String) {
+    public init(facts: FileFacts, text: String, hint: String? = nil) {
         self.facts = facts
         self.text = String(text.prefix(Self.maximumTextCharacters))
+        let trimmed = hint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.hint = trimmed.isEmpty ? nil : trimmed
     }
 }
 
@@ -51,4 +56,10 @@ public protocol ContentNamer: Sendable {
 /// recognition). `nil` when there's nothing to read or the file is skipped.
 public protocol ContentTextExtractor: Sendable {
     func text(from url: URL, maximumCharacters: Int) async -> String?
+    /// Optional on-device hint (e.g. non-junk PDF Title metadata). Default is `nil`.
+    func namingHint(from url: URL) async -> String?
+}
+
+extension ContentTextExtractor {
+    public func namingHint(from url: URL) async -> String? { nil }
 }

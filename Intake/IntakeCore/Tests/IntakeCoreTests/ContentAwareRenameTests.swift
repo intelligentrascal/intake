@@ -54,11 +54,11 @@ private func makeTempWatchFolder() throws -> URL {
 
 struct ContentNameTemplateTests {
     @Test
-    func defaultTemplateRendersDateTypeOrganization() {
+    func defaultTemplateRendersDateTypeOrganizationSubject() {
         let template = ContentNameTemplate()
         #expect(
             template.outcome(for: invoiceFields, currentFileName: "Inv 88123.pdf")
-                == .accepted("2026-09-14 Invoice ACME.pdf")
+                == .accepted("2026-09-14 Invoice ACME September Hosting.pdf")
         )
     }
 
@@ -109,7 +109,7 @@ struct ContentNameTemplateTests {
         fields.date = "2026-02-30"
         #expect(
             ContentNameTemplate().outcome(for: fields, currentFileName: "a.pdf")
-                == .accepted("Invoice ACME.pdf")
+                == .accepted("Invoice ACME September Hosting.pdf")
         )
     }
 
@@ -171,8 +171,12 @@ struct ContentNameTemplateTests {
         nan.confidence = .nan
         #expect(template.outcome(for: nan, currentFileName: "a.pdf") == .rejected(.lowConfidence))
 
-        let empty = ContentNamingFields(subject: "Something", confidence: 0.9)
+        let empty = ContentNamingFields(confidence: 0.9)
         #expect(template.outcome(for: empty, currentFileName: "a.pdf") == .rejected(.empty))
+
+        // Subject-only "Document" still fails closed via generic rejection.
+        let documentOnly = ContentNamingFields(subject: "Document", confidence: 0.9)
+        #expect(template.outcome(for: documentOnly, currentFileName: "a.pdf") == .rejected(.generic))
 
         let generic = ContentNamingFields(date: "2026-09-14", documentType: "Document", organization: "Unknown", confidence: 0.9)
         #expect(template.outcome(for: generic, currentFileName: "a.pdf") == .rejected(.generic))
@@ -195,7 +199,7 @@ struct ContentAwareRenameSettingsTests {
         let settings = ContentAwareRenameSettings()
         #expect(settings.isEnabled == false)
         #expect(settings.fileTypes == [.pdf, .images])
-        #expect(settings.template == "{date} {type} {organization}")
+        #expect(settings.template == "{date} {type} {organization} {subject}")
         #expect(settings.isEligible(URL(fileURLWithPath: "/tmp/a.pdf")) == false)
     }
 
@@ -264,7 +268,7 @@ struct ContentAwareRenamerTests {
             extractor: FakeExtractor(text: "ACME Corp — Invoice #88123 — 14 September 2026"),
             namer: FakeNamer(result: invoiceFields)
         )
-        #expect(await renamer.proposal(for: file) == .proposed("2026-09-14 Invoice ACME.pdf"))
+        #expect(await renamer.proposal(for: file) == .proposed("2026-09-14 Invoice ACME September Hosting.pdf"))
     }
 
     @Test
@@ -353,6 +357,30 @@ struct ContentAwareRenamerTests {
                 == .proposed("Invoice Inv 88123.pdf")
         )
     }
+
+    @Test
+    func namingHintIsPassedToTheNamer() async throws {
+        let root = try makeTempWatchFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pdf = root.appendingPathComponent("a.pdf")
+        try Data("%PDF".utf8).write(to: pdf)
+        let recorder = InputRecorder()
+
+        struct HintingExtractor: ContentTextExtractor {
+            func text(from url: URL, maximumCharacters: Int) async -> String? { "body text" }
+            func namingHint(from url: URL) async -> String? { "PDF title metadata: Useful Title" }
+        }
+
+        let renamer = ContentAwareRenamer(
+            settings: enabled,
+            extractor: HintingExtractor(),
+            namer: RecordingNamer(recorder: recorder, result: invoiceFields)
+        )
+        _ = await renamer.proposal(for: pdf)
+        let inputs = await recorder.inputs
+        #expect(inputs.first?.hint == "PDF title metadata: Useful Title")
+        #expect(inputs.first?.text == "body text")
+    }
 }
 
 // MARK: Pipeline seam: content rename, Activity, Undo, collisions
@@ -379,7 +407,7 @@ struct ContentAwareIngestPipelineTests {
         let proposed = try #require(await renamer.proposal(for: titleCase.url).fileName)
         let content = try pipeline.applyContentRename(at: titleCase.url, to: proposed, fileManager: fileManager)
 
-        #expect(content.url.lastPathComponent == "2026-09-14 Invoice ACME.pdf")
+        #expect(content.url.lastPathComponent == "2026-09-14 Invoice ACME September Hosting.pdf")
         let entry = try #require(content.entries.first)
         #expect(entry.kind == .renamed)
         #expect(entry.renameSource == .contentAware)
@@ -611,5 +639,31 @@ struct ContentRenameTrackerTests {
         #expect(tracker.jobs.count == 1)
         #expect(tracker.finish(first) == nil)
         #expect(tracker.finish(second) == file.standardizedFileURL)
+    }
+}
+
+
+// MARK: PDF title metadata hint
+
+struct PDFTitleMetadataTests {
+    @Test
+    func rejectsEmptyEqualBaseAndGenericTitles() {
+        #expect(PDFTitleMetadata.nonJunkTitle(nil, fileBaseName: "report") == nil)
+        #expect(PDFTitleMetadata.nonJunkTitle("   ", fileBaseName: "report") == nil)
+        #expect(PDFTitleMetadata.nonJunkTitle("report", fileBaseName: "report") == nil)
+        #expect(PDFTitleMetadata.nonJunkTitle("Report", fileBaseName: "report") == nil)
+        #expect(PDFTitleMetadata.nonJunkTitle("Untitled", fileBaseName: "report") == nil)
+        #expect(PDFTitleMetadata.nonJunkTitle("Untitled Document", fileBaseName: "report") == nil)
+        #expect(PDFTitleMetadata.nonJunkTitle("Document", fileBaseName: "scan") == nil)
+    }
+
+    @Test
+    func keepsUsefulTitlesAndFormatsHintLine() {
+        #expect(PDFTitleMetadata.nonJunkTitle("Quarterly Report", fileBaseName: "scan") == "Quarterly Report")
+        #expect(
+            PDFTitleMetadata.hintLine(title: "Q3 Board Pack", fileBaseName: "download")
+                == "PDF title metadata: Q3 Board Pack"
+        )
+        #expect(PDFTitleMetadata.hintLine(title: "Untitled", fileBaseName: "x") == nil)
     }
 }

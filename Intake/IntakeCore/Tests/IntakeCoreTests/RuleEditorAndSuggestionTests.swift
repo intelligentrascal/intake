@@ -439,6 +439,21 @@ struct OpenRouterSuggestionTests {
         #expect(json.contains("INVOICE Acme Corp"))
         #expect(json.contains("documentType"))
         #expect(json.contains("\"usage\""))
+        #expect(json.contains("put that title into subject"))
+    }
+
+    @Test
+    func buildsContentNamingBodyWithPDFTitleHint() throws {
+        let body = try OpenRouterRequestBuilder.contentNamingBody(
+            model: "openai/gpt-4o-mini",
+            fileName: "scan.pdf",
+            fileExtension: "pdf",
+            text: "page one body",
+            hint: "PDF title metadata: Quarterly Report"
+        )
+        let json = String(decoding: body, as: UTF8.self)
+        #expect(json.contains("PDF title metadata: Quarterly Report"))
+        #expect(json.contains("page one body"))
     }
 
     @Test
