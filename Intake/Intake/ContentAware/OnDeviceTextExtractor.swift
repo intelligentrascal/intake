@@ -31,6 +31,20 @@ nonisolated struct OnDeviceTextExtractor: ContentTextExtractor {
         return nil
     }
 
+    /// Non-junk PDF Title document attribute as a namer hint. Images have none.
+    @concurrent
+    func namingHint(from url: URL) async -> String? {
+        let size = DownloadWriteGate.fileSize(at: url)
+        guard size > 0, size <= ContentAwareRenameSettings.maximumFileSize else { return nil }
+        let ext = url.pathExtension.lowercased()
+        guard ContentAwareFileType.pdf.extensions.contains(ext) else { return nil }
+        guard let document = PDFDocument(url: url) else { return nil }
+        guard !document.isEncrypted, !document.isLocked else { return nil }
+        let title = document.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String
+        let base = url.deletingPathExtension().lastPathComponent
+        return PDFTitleMetadata.hintLine(title: title, fileBaseName: base)
+    }
+
     private func pdfText(from url: URL, maximumCharacters: Int) async -> String? {
         guard let document = PDFDocument(url: url) else { return nil }
         // Never try to unlock or read around encryption.

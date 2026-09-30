@@ -190,7 +190,8 @@ public struct ContentAwareRenamer: Sendable {
         guard !text.isEmpty else { return .fallback(.noText) }
 
         let facts = FileFacts.onDisk(at: url, fileManager: fileManager)
-        let fields = await namer.fields(for: ContentNamingInput(facts: facts, text: text))
+        let hint = await extractor.namingHint(from: url)
+        let fields = await namer.fields(for: ContentNamingInput(facts: facts, text: text, hint: hint))
         switch settings.nameTemplate.outcome(
             for: fields,
             currentFileName: currentFileName ?? url.lastPathComponent

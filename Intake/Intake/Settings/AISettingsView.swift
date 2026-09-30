@@ -308,7 +308,7 @@ struct AISettingsView: View {
     private var contentAwareFooter: String {
         switch model.contentAwareRename.provider {
         case .onDevice:
-            return "Off by default. Intake reads PDFs and images on this Mac with Apple’s on-device model — file contents never leave this Mac. A name like “2026-09-14 Invoice Acme” is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity."
+            return "Off by default. Intake reads PDFs and images on this Mac with Apple’s on-device model — file contents never leave this Mac. A name like “2026-09-14 Invoice Acme September Hosting” is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity."
         case .openRouter:
             return "Off by default. Intake reads PDFs and images on this Mac, then sends that extracted text to OpenRouter to propose a name. Requires OpenRouter enabled and an API key below. A name is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity."
         }
