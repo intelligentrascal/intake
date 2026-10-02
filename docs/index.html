@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intake — Your Downloads, tidied.</title>
+<meta name="description" content="Intake renames every download the moment it finishes, then files it into the right folder — on your schedule, on your Mac.">
+<style>
+  :root{
+    --ink:#1d1d1f;
+    --ink-2:#6e6e73;
+    --bg:#ffffff;
+    --bg-2:#f5f5f7;
+    --line:rgba(0,0,0,.08);
+    --dark:#000000;
+    --dark-2:#1d1d1f;
+    --on-dark:#f5f5f7;
+    --on-dark-2:#86868b;
+    --blue:#0071e3;
+    --blue-hi:#0077ed;
+    --green:#30d158;
+    --orange:#ff9f0a;
+    --red:#ff453a;
+    --r-lg:28px;
+    --r-md:18px;
+    --r-sm:12px;
+    --ease:cubic-bezier(.16,1,.3,1);
+    --nav-h:52px;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--font);
+    background:var(--bg);
+    color:var(--ink);
+    font-size:17px;
+    line-height:1.47;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  ::selection{background:rgba(0,113,227,.22)}
+  a{color:inherit}
+  img,svg{display:block}
+  button{font:inherit}
+
+  :focus-visible{
+    outline:3px solid var(--blue);
+    outline-offset:3px;
+    border-radius:6px;
+  }
+
+  .wrap{width:min(1024px,calc(100% - 48px));margin-inline:auto}
+  .wrap-n{width:min(820px,calc(100% - 48px));margin-inline:auto}
+
+  /* ---------- Type ---------- */
+  .eyebrow{
+    font-size:1.0625rem;
+    font-weight:600;
+    letter-spacing:-.01em;
+    color:var(--blue);
+    margin-bottom:14px;
+  }
+  h1{
+    font-size:clamp(3rem,8.5vw,6rem);
+    font-weight:700;
+    line-height:.98;
+    letter-spacing:-.035em;
+  }
+  h2{
+    font-size:clamp(2.25rem,5.4vw,4rem);
+    font-weight:700;
+    line-height:1.03;
+    letter-spacing:-.028em;
+  }
+  h3{
+    font-size:clamp(1.375rem,2.4vw,1.75rem);
+    font-weight:600;
+    letter-spacing:-.018em;
+    line-height:1.15;
+  }
+  .lead{
+    font-size:clamp(1.1875rem,2.1vw,1.5rem);
+    line-height:1.4;
+    letter-spacing:-.012em;
+    color:var(--ink-2);
+    font-weight:400;
+  }
+  .lead strong{color:var(--ink);font-weight:600}
+  p.body{font-size:1.0625rem;line-height:1.5;color:var(--ink-2);letter-spacing:-.003em}
+  .section-head{max-width:760px;margin-bottom:56px}
+  .section-head .lead{margin-top:20px}
+
+  section{padding:clamp(80px,11vw,140px) 0;position:relative}
+  .sec-gray{background:var(--bg-2)}
+  .sec-dark{background:var(--dark);color:var(--on-dark)}
+  .sec-dark .lead,.sec-dark p.body{color:var(--on-dark-2)}
+  .sec-dark .lead strong{color:var(--on-dark)}
+  .sec-dark .eyebrow{color:#2997ff}
+
+  /* ---------- Nav ---------- */
+  nav{
+    position:sticky;top:0;z-index:100;
+    height:var(--nav-h);
+    background:rgba(255,255,255,.72);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    backdrop-filter:saturate(180%) blur(20px);
+    border-bottom:1px solid rgba(0,0,0,.06);
+  }
+  .nav-in{
+    height:100%;width:min(1024px,calc(100% - 40px));margin-inline:auto;
+    display:flex;align-items:center;gap:28px;
+  }
+  .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:.9375rem;letter-spacing:-.01em;text-decoration:none;flex-shrink:0}
+  .brand svg{width:20px;height:20px}
+  .nav-links{display:flex;gap:26px;margin-left:auto;align-items:center}
+  .nav-links a{
+    font-size:.8125rem;color:var(--ink-2);text-decoration:none;letter-spacing:-.005em;
+    padding:8px 0;transition:color .2s ease;
+  }
+  .nav-links a:hover{color:var(--ink)}
+  .nav-dl{
+    background:var(--blue);color:#fff !important;
+    padding:7px 15px !important;border-radius:980px;font-weight:500 !important;
+    transition:background .2s ease !important;
+  }
+  .nav-dl:hover{background:var(--blue-hi);color:#fff !important}
+  @media(max-width:720px){.nav-links a:not(.nav-dl){display:none}}
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    min-height:48px;padding:13px 26px;border-radius:980px;
+    font-size:1.0625rem;font-weight:500;letter-spacing:-.012em;
+    text-decoration:none;border:none;cursor:default;
+    transition:background .2s ease,transform .12s ease,color .2s ease;
+  }
+  .btn:active{transform:scale(.975)}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-primary:hover{background:var(--blue-hi)}
+  .btn-ghost{background:transparent;color:var(--blue);padding-inline:8px}
+  .btn-ghost:hover{color:#0077ed;text-decoration:underline}
+  .btn-dark{background:#fff;color:#000}
+  .btn-dark:hover{background:#e8e8ed}
+  .btn-outline{
+    background:transparent;color:var(--blue);
+    box-shadow:inset 0 0 0 1.5px var(--blue);
+  }
+  .btn-outline:hover{background:rgba(0,113,227,.06)}
+  .sec-dark .btn-outline{color:#2997ff;box-shadow:inset 0 0 0 1.5px #2997ff}
+  .sec-dark .btn-outline:hover{background:rgba(41,151,255,.1)}
+  .cta-row{display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-top:36px}
+
+  /* ---------- Reveal ---------- */
+  [data-reveal]{
+    opacity:0;transform:translateY(30px);
+    transition:opacity 1s var(--ease),transform 1s var(--ease);
+    transition-delay:var(--d,0ms);
+    will-change:opacity,transform;
+  }
+  [data-reveal].in{opacity:1;transform:none}
+
+  /* ---------- Hero ---------- */
+  .hero{
+    padding:clamp(72px,9vw,120px) 0 clamp(64px,8vw,104px);
+    background:linear-gradient(180deg,#fff 0%,var(--bg-2) 100%);
+    text-align:center;overflow:hidden;
+  }
+  .hero .lead{max-width:660px;margin:26px auto 0}
+  .hero .cta-row{justify-content:center}
+  .hero-note{font-size:.8125rem;color:var(--ink-2);margin-top:22px;letter-spacing:-.003em}
+
+  /* ---------- Window mock ---------- */
+  .window{
+    width:min(720px,100%);
+    margin:64px auto 0;
+    background:#fff;
+    border-radius:var(--r-md);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 2px 6px rgba(0,0,0,.04),0 24px 70px rgba(0,0,0,.16);
+    overflow:hidden;
+    text-align:left;
+  }
+  .win-bar{
+    display:flex;align-items:center;gap:8px;
+    padding:13px 16px;
+    background:linear-gradient(180deg,#f6f6f7,#ededee);
+    border-bottom:1px solid rgba(0,0,0,.07);
+  }
+  .tl{width:12px;height:12px;border-radius:50%}
+  .tl.r{background:#ff5f57}.tl.y{background:#febc2e}.tl.g{background:#28c840}
+  .win-title{
+    flex:1;text-align:center;font-size:.8125rem;font-weight:600;
+    color:#3a3a3c;letter-spacing:-.005em;margin-right:52px;
+  }
+  .win-body{padding:10px 12px 16px;min-height:262px}
+  .frow{
+    display:flex;align-items:center;gap:12px;
+    padding:11px 12px;border-radius:10px;
+    transition:background .3s ease;
+  }
+  .frow + .frow{margin-top:2px}
+  .frow:hover{background:var(--bg-2)}
+  .fico{
+    width:34px;height:40px;flex-shrink:0;position:relative;overflow:hidden;
+    border-radius:5px;background:#fff;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.09);
+    color:#6e6e73;
+  }
+  .fico::before{
+    content:"";position:absolute;left:0;right:0;bottom:0;height:7px;
+    background:#c7c7cc;
+  }
+  .fico::after{
+    content:attr(data-ext);
+    position:absolute;left:0;right:0;bottom:11px;
+    text-align:center;font-size:.5rem;font-weight:700;letter-spacing:.05em;
+  }
+  .fico[data-k="pdf"]{color:#d70015}
+  .fico[data-k="pdf"]::before{background:#ff453a}
+  .fico[data-k="pdf"]::after{content:"PDF"}
+  .fico[data-k="ppt"]{color:#a05a00}
+  .fico[data-k="ppt"]::before{background:#ff9f0a}
+  .fico[data-k="ppt"]::after{content:"PPTX"}
+  .fico[data-k="dmg"]{color:#0060df}
+  .fico[data-k="dmg"]::before{background:#0a84ff}
+  .fico[data-k="dmg"]::after{content:"DMG"}
+  .fico[data-k="zip"]{color:#5b5b60}
+  .fico[data-k="zip"]::before{background:#8e8e93}
+  .fico[data-k="zip"]::after{content:"ZIP"}
+  .fname{
+    flex:1;min-width:0;position:relative;
+    font-size:.9375rem;font-weight:500;letter-spacing:-.008em;
+    height:1.35em;
+  }
+  .fname span{
+    position:absolute;left:0;top:0;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:100%;
+    transition:opacity .45s var(--ease),transform .45s var(--ease);
+  }
+  .fname .before{color:#8e8e93;opacity:1}
+  .fname .after{color:var(--ink);opacity:0;transform:translateY(6px);font-weight:600}
+  .frow.clean .before{opacity:0;transform:translateY(-6px)}
+  .frow.clean .after{opacity:1;transform:none}
+  .fbadge{
+    flex-shrink:0;display:inline-flex;align-items:center;gap:6px;
+    font-size:.75rem;font-weight:600;letter-spacing:-.005em;
+    color:#007a3d;background:rgba(48,209,88,.14);
+    padding:5px 11px;border-radius:980px;
+    opacity:0;transform:scale(.86);
+    transition:opacity .4s var(--ease),transform .5s var(--ease);
+    white-space:nowrap;
+  }
+  .fbadge svg{width:11px;height:11px}
+  .frow.filed .fbadge{opacity:1;transform:none}
+  .win-foot{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:12px 16px;border-top:1px solid rgba(0,0,0,.07);
+    background:#fafafa;
+    font-size:.75rem;color:var(--ink-2);
+  }
+  .win-foot .dot{display:inline-flex;align-items:center;gap:7px}
+  .pulse{
+    width:7px;height:7px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 0 rgba(48,209,88,.5);
+    animation:pulse 2.4s infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(48,209,88,.45)}
+    70%{box-shadow:0 0 0 7px rgba(48,209,88,0)}
+    100%{box-shadow:0 0 0 0 rgba(48,209,88,0)}
+  }
+
+  /* ---------- Before / after type ---------- */
+  .ba{
+    display:grid;gap:8px;
+    background:#0a0a0c;
+    border-radius:var(--r-lg);
+    padding:clamp(32px,5vw,56px);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
+    overflow:hidden;
+  }
+  .ba-label{
+    font-size:.75rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+    color:#98989d;
+  }
+  .ba-old{
+    font-family:var(--mono);
+    font-size:clamp(.9375rem,2.4vw,1.375rem);
+    color:#86868b;
+    text-decoration:line-through;
+    text-decoration-color:rgba(255,69,58,.75);
+    text-decoration-thickness:1.5px;
+    overflow-wrap:anywhere;
+    margin-top:6px;
+  }
+  .ba-new{
+    font-size:clamp(1.375rem,4vw,2.5rem);
+    font-weight:700;letter-spacing:-.025em;line-height:1.1;
+    color:#f5f5f7;
+    overflow-wrap:anywhere;
+    margin-top:6px;
+    display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  }
+  .ba-new .dest{
+    font-size:.5em;font-weight:600;letter-spacing:-.01em;
+    color:#2997ff;white-space:nowrap;
+  }
+  .ba-arrow{
+    display:flex;align-items:center;gap:10px;
+    color:#30d158;font-size:.875rem;font-weight:600;
+    margin-top:4px;
+  }
+
+  /* ---------- Wait chips ---------- */
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:34px}
+  .chip{
+    font-size:.9375rem;font-weight:500;letter-spacing:-.008em;
+    padding:11px 20px;border-radius:980px;
+    background:#fff;color:var(--ink-2);
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.1);
+  }
+  .chip.on{
+    background:var(--blue);color:#fff;box-shadow:none;font-weight:600;
+  }
+  .sec-gray .chip{background:#fff}
+  .sec-gray .chip.on{background:var(--blue);color:#fff}
+
+  .steps{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+    gap:14px;margin-top:44px;
+  }
+  .step{
+    background:#fff;border-radius:var(--r-md);padding:24px 22px;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);
+  }
+  .step .n{
+    font-size:.75rem;font-weight:700;color:var(--blue);
+    letter-spacing:.06em;margin-bottom:12px;
+  }
+  .step h3{font-size:1.0625rem;margin-bottom:7px;letter-spacing:-.012em}
+  .step p{font-size:.875rem;line-height:1.45;color:var(--ink-2)}
+
+  /* ---------- Taxonomy grid ---------- */
+  .taxo{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+    gap:12px;margin-top:8px;
+  }
+  .tcard{
+    background:#141416;border-radius:var(--r-sm);padding:18px 18px 16px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
+    transition:box-shadow .3s ease,transform .3s ease;
+  }
+  .tcard:hover{box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);transform:translateY(-2px)}
+  .tcard .ic{
+    width:34px;height:34px;border-radius:9px;
+    display:flex;align-items:center;justify-content:center;
+    margin-bottom:14px;
+  }
+  .tcard .ic svg{width:18px;height:18px;stroke:#0a0a0c;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .tcard h4{font-size:.9375rem;font-weight:600;letter-spacing:-.01em;color:#f5f5f7}
+  .tcard p{
+    font-family:var(--mono);font-size:.6875rem;line-height:1.6;
+    color:#98989d;margin-top:7px;letter-spacing:-.01em;overflow-wrap:anywhere;
+  }
+  .tcard.wide{grid-column:span 1}
+  .lazy-note{
+    margin-top:26px;font-size:.9375rem;color:var(--on-dark-2);
+    display:flex;gap:10px;align-items:flex-start;
+  }
+  .lazy-note svg{width:17px;height:17px;flex-shrink:0;margin-top:3px;stroke:#2997ff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- Rules conditions ---------- */
+  .rules-flex{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
+  @media(max-width:860px){.rules-flex{grid-template-columns:1fr;gap:36px}}
+  .cond-list{display:flex;flex-direction:column;gap:10px}
+  .cond{
+    display:flex;align-items:center;gap:14px;
+    background:#fff;border-radius:var(--r-sm);padding:16px 18px;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.07);
+  }
+  .cond .ic{
+    width:36px;height:36px;border-radius:9px;flex-shrink:0;
+    background:rgba(0,113,227,.1);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .cond .ic svg{width:18px;height:18px;stroke:var(--blue);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .cond b{display:block;font-size:.9375rem;font-weight:600;letter-spacing:-.01em}
+  .cond span{display:block;font-size:.8125rem;color:var(--ink-2);margin-top:2px}
+  .cond code{font-family:var(--mono);font-size:.8125rem;background:var(--bg-2);padding:2px 7px;border-radius:5px;color:var(--ink)}
+
+  /* ---------- Folder watch cards ---------- */
+  .watch-grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;
+  }
+  .wcard{
+    background:#fff;border-radius:var(--r-md);padding:22px;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.07);
+    display:flex;flex-direction:column;gap:14px;
+  }
+  .wcard .top{display:flex;align-items:center;gap:12px}
+  .wcard .ic{
+    width:38px;height:38px;border-radius:10px;flex-shrink:0;
+    background:linear-gradient(180deg,#59b7ff,#0a84ff);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .wcard .ic svg{width:20px;height:20px;stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .wcard h4{font-size:1rem;font-weight:600;letter-spacing:-.012em}
+  .status{
+    display:inline-flex;align-items:center;gap:7px;align-self:flex-start;
+    font-size:.75rem;font-weight:600;letter-spacing:-.005em;
+    padding:5px 12px;border-radius:980px;
+    background:rgba(48,209,88,.13);color:#007a3d;
+  }
+  .status .d{width:6px;height:6px;border-radius:50%;background:var(--green)}
+  .status.paused{background:rgba(255,159,10,.15);color:#a05a00}
+  .status.paused .d{background:var(--orange)}
+  .wcard p{font-size:.8125rem;color:var(--ink-2);line-height:1.45}
+  .cap-note{
+    margin-top:22px;font-size:.9375rem;color:var(--ink-2);
+    display:flex;gap:9px;align-items:center;
+  }
+  .cap-note b{color:var(--ink);font-weight:600}
+
+  /* ---------- Sheet / dialog mock ---------- */
+  .sheet{
+    background:#fff;border-radius:var(--r-md);overflow:hidden;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.11),0 2px 8px rgba(0,0,0,.05),0 30px 80px rgba(0,0,0,.2);
+    max-width:520px;
+  }
+  .sheet-body{padding:30px 30px 24px;text-align:center}
+  .sheet-body h4{font-size:1.125rem;font-weight:600;letter-spacing:-.014em}
+  .sheet-body p{font-size:.875rem;color:var(--ink-2);margin-top:9px;line-height:1.45}
+  .preview-list{
+    margin-top:22px;text-align:left;
+    background:var(--bg-2);border-radius:12px;padding:8px;
+  }
+  .prow{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:9px 12px;font-size:.8125rem;
+  }
+  .prow + .prow{border-top:1px solid rgba(0,0,0,.06)}
+  .prow.grp{padding-top:13px;padding-bottom:3px}
+  .prow.grp .l{
+    font-family:var(--font);font-size:.6875rem;font-weight:600;
+    letter-spacing:.05em;text-transform:uppercase;color:#6e6e73;
+  }
+  .prow.grp + .prow{border-top:none}
+  .prow .l{font-family:var(--mono);font-size:.75rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .prow .r{display:flex;gap:7px;flex-shrink:0;align-items:center}
+  .tag{
+    font-size:.625rem;font-weight:700;letter-spacing:.03em;
+    padding:3px 8px;border-radius:980px;text-transform:uppercase;
+  }
+  .tag.new{background:rgba(0,113,227,.12);color:var(--blue)}
+  .tag.dst{background:rgba(0,0,0,.06);color:var(--ink-2)}
+  .sheet-actions{
+    display:flex;gap:10px;justify-content:flex-end;
+    padding:14px 18px;background:#f6f6f7;border-top:1px solid rgba(0,0,0,.07);
+  }
+  .mbtn{
+    font-size:.875rem;font-weight:500;padding:7px 16px;border-radius:8px;
+    border:none;cursor:default;background:transparent;color:var(--ink);
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.14);
+    transition:background .15s ease;
+  }
+  .mbtn:hover{background:rgba(0,0,0,.04)}
+  .mbtn.pri{background:var(--blue);color:#fff;box-shadow:none}
+  .mbtn.pri:hover{background:var(--blue-hi)}
+
+  /* ---------- Activity rows ---------- */
+  .activity{
+    background:#0a0a0c;border-radius:var(--r-lg);overflow:hidden;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+  .act-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .act-head b{font-size:.9375rem;font-weight:600;color:#f5f5f7;letter-spacing:-.01em}
+  .act-head span{font-size:.75rem;color:#98989d}
+  .arow{
+    display:flex;align-items:center;gap:14px;
+    padding:14px 22px;
+  }
+  .arow + .arow{border-top:1px solid rgba(255,255,255,.06)}
+  .arow .verb{
+    font-size:.6875rem;font-weight:700;letter-spacing:.05em;
+    padding:4px 9px;border-radius:6px;flex-shrink:0;width:64px;text-align:center;
+  }
+  .verb.renamed{background:rgba(41,151,255,.16);color:#2997ff}
+  .verb.moved{background:rgba(48,209,88,.14);color:#30d158}
+  .arow .txt{flex:1;min-width:0;font-size:.875rem;color:#c7c7cc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .arow .txt b{color:#f5f5f7;font-weight:600}
+  .arow .txt .arrow{color:#98989d;margin:0 6px}
+  .undo{
+    flex-shrink:0;font-size:.75rem;font-weight:600;
+    padding:6px 14px;border-radius:980px;border:none;cursor:default;
+    background:rgba(255,255,255,.1);color:#f5f5f7;
+    transition:background .15s ease;
+    min-height:30px;
+  }
+  .undo:hover{background:rgba(255,255,255,.2)}
+
+  /* ---------- Cleanup queue ---------- */
+  .queue{display:flex;flex-direction:column;gap:12px}
+  .qrow{
+    display:flex;align-items:center;gap:16px;
+    background:#fff;border-radius:var(--r-md);padding:18px 20px;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.07);
+    flex-wrap:wrap;
+  }
+  .qrow .ic{
+    width:40px;height:46px;flex-shrink:0;border-radius:6px;
+    background:linear-gradient(160deg,#fff 0 62%,#e9e9ec 62% 100%);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
+    display:flex;align-items:flex-end;justify-content:center;padding-bottom:7px;
+    font-size:.5rem;font-weight:700;color:#6e6e73;
+  }
+  .qmeta{flex:1;min-width:180px}
+  .qmeta b{display:block;font-size:.9375rem;font-weight:600;letter-spacing:-.01em}
+  .reason{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:.75rem;font-weight:600;margin-top:6px;
+    color:#a05a00;background:rgba(255,159,10,.14);
+    padding:4px 10px;border-radius:980px;
+  }
+  .reason.dup{color:#007a3d;background:rgba(48,209,88,.14)}
+  .qacts{display:flex;gap:8px;flex-wrap:wrap}
+  .qbtn{
+    font-size:.8125rem;font-weight:500;padding:8px 15px;border-radius:980px;
+    border:none;cursor:default;min-height:34px;
+    background:var(--bg-2);color:var(--ink);
+    transition:background .15s ease;
+  }
+  .qbtn:hover{background:#e8e8ed}
+  .qbtn.del{background:transparent;color:#d70015;box-shadow:inset 0 0 0 1.5px rgba(215,0,21,.4)}
+  .qbtn.del:hover{background:rgba(215,0,21,.06)}
+  .queue-note{
+    margin-top:24px;font-size:.9375rem;color:var(--ink-2);
+    display:flex;gap:10px;align-items:flex-start;
+  }
+  .queue-note svg{width:17px;height:17px;flex-shrink:0;margin-top:3px;stroke:var(--blue);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- Naming demo ---------- */
+  .name-demo{
+    background:#0a0a0c;border-radius:var(--r-lg);
+    padding:clamp(30px,5vw,52px);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);
+    text-align:center;
+  }
+  .name-demo .step-label{
+    font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    color:#98989d;margin-bottom:16px;
+  }
+  .name-file{
+    font-family:var(--mono);font-size:clamp(.9375rem,2.6vw,1.375rem);
+    color:#86868b;overflow-wrap:anywhere;
+  }
+  .name-out{
+    font-size:clamp(1.375rem,4vw,2.25rem);font-weight:700;letter-spacing:-.025em;
+    color:#f5f5f7;margin-top:10px;overflow-wrap:anywhere;
+  }
+  .name-badges{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:26px}
+  .nbadge{
+    display:inline-flex;align-items:center;gap:8px;
+    font-size:.8125rem;font-weight:500;
+    padding:9px 16px;border-radius:980px;
+    background:rgba(255,255,255,.07);color:#c7c7cc;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.09);
+  }
+  .nbadge svg{width:14px;height:14px;stroke:#30d158;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .nbadge.off{color:#86868b}
+  .nbadge.off svg{stroke:#86868b}
+
+  /* ---------- Privacy ---------- */
+  .priv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+  .pcard{
+    background:#fff;border-radius:var(--r-md);padding:28px 26px;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.07);
+  }
+  .pcard .ic{
+    width:44px;height:44px;border-radius:12px;background:rgba(0,113,227,.1);
+    display:flex;align-items:center;justify-content:center;margin-bottom:18px;
+  }
+  .pcard .ic svg{width:22px;height:22px;stroke:var(--blue);stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .pcard h3{font-size:1.125rem;margin-bottom:9px}
+  .pcard p{font-size:.9375rem;color:var(--ink-2);line-height:1.5}
+
+  /* ---------- Bento ---------- */
+  .bento{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+  .bcard{
+    background:var(--bg-2);border-radius:var(--r-md);padding:26px 24px;
+    transition:transform .35s var(--ease);
+  }
+  .bcard:hover{transform:translateY(-3px)}
+  .bcard .ic{
+    width:38px;height:38px;border-radius:10px;background:#fff;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.07);
+    display:flex;align-items:center;justify-content:center;margin-bottom:16px;
+  }
+  .bcard .ic svg{width:19px;height:19px;stroke:var(--ink);stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .bcard h4{font-size:1rem;font-weight:600;letter-spacing:-.012em}
+  .bcard p{font-size:.875rem;color:var(--ink-2);margin-top:7px;line-height:1.45}
+
+  /* ---------- FAQ ---------- */
+  .faq{display:flex;flex-direction:column;gap:0;max-width:760px}
+  .faq details{border-bottom:1px solid var(--line)}
+  .faq details:first-child{border-top:1px solid var(--line)}
+  .faq summary{
+    list-style:none;cursor:default;
+    padding:24px 40px 24px 0;position:relative;
+    font-size:1.125rem;font-weight:600;letter-spacing:-.014em;
+    min-height:44px;display:flex;align-items:center;
+  }
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary::after{
+    content:"";position:absolute;right:6px;top:50%;
+    width:13px;height:13px;margin-top:-6.5px;
+    border-right:2px solid var(--blue);border-bottom:2px solid var(--blue);
+    transform:rotate(45deg);transition:transform .3s var(--ease);
+  }
+  .faq details[open] summary::after{transform:rotate(-135deg);margin-top:-2px}
+  .faq .ans{padding:0 40px 26px 0;font-size:1rem;line-height:1.55;color:var(--ink-2)}
+  .faq .ans strong{color:var(--ink);font-weight:600}
+
+  /* ---------- Final CTA ---------- */
+  .final{
+    background:var(--bg-2);text-align:center;
+    padding:clamp(88px,12vw,150px) 0;
+  }
+  .final .lead{max-width:600px;margin:22px auto 0}
+  .final .cta-row{justify-content:center}
+  .specs{
+    display:flex;flex-wrap:wrap;justify-content:center;gap:10px 34px;
+    margin-top:44px;font-size:.8125rem;color:var(--ink-2);
+  }
+  .specs span{display:inline-flex;align-items:center;gap:8px}
+  .specs svg{width:14px;height:14px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- Footer ---------- */
+  footer{
+    background:var(--bg-2);border-top:1px solid var(--line);
+    padding:26px 0 44px;font-size:.75rem;color:var(--ink-2);
+  }
+  .foot-in{display:flex;flex-wrap:wrap;gap:14px 30px;align-items:center;justify-content:space-between}
+  .foot-links{display:flex;flex-wrap:wrap;gap:22px}
+  .foot-links a{text-decoration:none;transition:color .2s ease}
+  .foot-links a:hover{color:var(--ink);text-decoration:underline}
+
+  /* ---------- Split layout ---------- */
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+  @media(max-width:860px){.split{grid-template-columns:1fr;gap:40px}}
+  .split .visual{min-width:0}
+
+  @media(max-width:600px){
+    .wrap,.wrap-n{width:calc(100% - 32px)}
+    .win-body{min-height:0}
+    .arow{flex-wrap:wrap}
+    .arow .txt{white-space:normal;overflow:visible}
+  }
+
+  /* ---------- Reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{
+      animation-duration:.01ms !important;
+      animation-iteration-count:1 !important;
+      transition-duration:.01ms !important;
+    }
+    [data-reveal]{opacity:1 !important;transform:none !important}
+    .bcard:hover,.tcard:hover{transform:none}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-in">
+    <a class="brand" href="#top" aria-label="Intake home">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 14c0 2.8 2.2 5 5 5h6c2.8 0 5-2.2 5-5" stroke="#0071e3" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M12 3v7m0 0 3-3m-3 3-3-3" stroke="#0071e3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Intake
+    </a>
+    <div class="nav-links">
+      <a href="#rename">Rename</a>
+      <a href="#rules">Rules</a>
+      <a href="#control">Control</a>
+      <a href="#privacy">Privacy</a>
+      <a class="nav-dl" href="https://github.com/intelligentrascal/intake/releases/latest">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <p class="eyebrow" data-reveal>Intake for macOS</p>
+    <h1 data-reveal style="--d:70ms">Your Downloads,<br>tidied.</h1>
+    <p class="lead" data-reveal style="--d:150ms">
+      Intake renames every download the moment it finishes, then files it into the
+      right folder — <strong>on your schedule, on your Mac.</strong>
+    </p>
+    <div class="cta-row" data-reveal style="--d:230ms">
+      <a class="btn btn-primary" href="https://github.com/intelligentrascal/intake/releases/latest">Download for macOS</a>
+      <a class="btn btn-ghost" href="#rename">See how it works ›</a>
+    </div>
+    <p class="hero-note" data-reveal style="--d:300ms">Free and open source. Signed and notarized by Apple.</p>
+
+    <div class="window" data-reveal style="--d:380ms" role="img" aria-label="A Downloads folder where file names tidy themselves and files are filed into Documents, Presentations and Installers folders.">
+      <div class="win-bar">
+        <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+        <span class="win-title">Downloads</span>
+      </div>
+      <div class="win-body" id="demo">
+        <div class="frow" data-file>
+          <span class="fico" data-k="pdf"></span>
+          <span class="fname">
+            <span class="before">quarterly-report-q1.pdf</span>
+            <span class="after">Quarterly Report Q1.pdf</span>
+          </span>
+          <span class="fbadge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Documents
+          </span>
+        </div>
+        <div class="frow" data-file>
+          <span class="fico" data-k="ppt"></span>
+          <span class="fname">
+            <span class="before">board Update deck final.pptx</span>
+            <span class="after">Board Update Deck Final.pptx</span>
+          </span>
+          <span class="fbadge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Presentations
+          </span>
+        </div>
+        <div class="frow" data-file>
+          <span class="fico" data-k="dmg"></span>
+          <span class="fname">
+            <span class="before">App_v2.3_Release.dmg</span>
+            <span class="after">App v2.3 Release.dmg</span>
+          </span>
+          <span class="fbadge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Installers
+          </span>
+        </div>
+        <div class="frow" data-file>
+          <span class="fico" data-k="zip"></span>
+          <span class="fname">
+            <span class="before">HELLO_WORLD.ZIP</span>
+            <span class="after">Hello World.ZIP</span>
+          </span>
+          <span class="fbadge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Archives
+          </span>
+        </div>
+      </div>
+      <div class="win-foot">
+        <span class="dot"><span class="pulse" aria-hidden="true"></span> Watching</span>
+        <span>Renamed on this Mac · Filed after the wait</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ RENAME ============ -->
+<section id="rename" class="sec-dark">
+  <div class="wrap">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow">Rename</p>
+      <h2>Named the moment<br>a download finishes.</h2>
+      <p class="lead">
+        The second a file is complete and stable, Intake gives it a name a human can read.
+        <strong>It happens instantly — before any filing, and entirely on your Mac.</strong>
+      </p>
+    </div>
+
+    <div class="ba" data-reveal>
+      <span class="ba-label">Before</span>
+      <div class="ba-old">quarterly-report-q1.pdf</div>
+      <div class="ba-arrow" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14m0 0 6-6m-6 6-6-6"/></svg>
+        Title Case, small-word exceptions, product names intact
+      </div>
+      <span class="ba-label">After</span>
+      <div class="ba-new">Quarterly Report Q1.pdf</div>
+    </div>
+
+    <div class="steps">
+      <div class="step" data-reveal style="--d:0ms;background:#141416;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)">
+        <div class="n" style="color:#2997ff">01</div>
+        <h3 style="color:#f5f5f7">Local Title Case</h3>
+        <p style="color:#86868b">Underscores, hyphens and stray spacing become words. <span style="font-family:var(--mono);font-size:.85em">Report (1).pdf</span> becomes <span style="font-family:var(--mono);font-size:.85em;color:#c7c7cc">Report.pdf</span>.</p>
+      </div>
+      <div class="step" data-reveal style="--d:90ms;background:#141416;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)">
+        <div class="n" style="color:#2997ff">02</div>
+        <h3 style="color:#f5f5f7">Names stay right</h3>
+        <p style="color:#86868b">A small allowlist keeps products and acronyms correct — <span style="color:#c7c7cc">macOS</span>, <span style="color:#c7c7cc">iPhone</span>, <span style="color:#c7c7cc">Q1</span>, <span style="color:#c7c7cc">iOS</span>.</p>
+      </div>
+      <div class="step" data-reveal style="--d:180ms;background:#141416;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)">
+        <div class="n" style="color:#2997ff">03</div>
+        <h3 style="color:#f5f5f7">Never collides</h3>
+        <p style="color:#86868b">If a different file already holds the name, Intake adds a quiet <span style="color:#c7c7cc">2</span> suffix. Nothing is overwritten. Nothing is deleted.</p>
+      </div>
+      <div class="step" data-reveal style="--d:270ms;background:#141416;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)">
+        <div class="n" style="color:#2997ff">04</div>
+        <h3 style="color:#f5f5f7">Yours to reverse</h3>
+        <p style="color:#86868b">Every rename lands in Activity with an <strong style="color:#f5f5f7">Undo</strong> button next to it. One click puts the old name back.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WAIT ============ -->
+<section id="wait">
+  <div class="wrap">
+    <div class="rules-flex">
+      <div data-reveal>
+        <p class="eyebrow">Wait before organizing</p>
+        <h2>Then it waits<br>for you.</h2>
+        <p class="lead" style="margin-top:20px">
+          A download you just finished usually wants opening, not filing.
+          <strong>New files stay where they land for two hours by default</strong> —
+          long enough to use them, then they're put away.
+        </p>
+        <div class="chips" role="list" aria-label="Wait time presets">
+          <span class="chip" role="listitem">Immediately</span>
+          <span class="chip" role="listitem">15 minutes</span>
+          <span class="chip" role="listitem">1 hour</span>
+          <span class="chip on" role="listitem">2 hours · Default</span>
+          <span class="chip" role="listitem">1 day</span>
+        </div>
+      </div>
+      <div class="visual" data-reveal style="--d:120ms">
+        <div class="sheet">
+          <div class="sheet-body">
+            <h4>Rename now. File later.</h4>
+            <p>The two are independent. Renaming is instant and always on by default; only filing waits.</p>
+            <div class="preview-list">
+              <div class="prow grp"><span class="l">Renamed already — instantly</span></div>
+              <div class="prow">
+                <span class="l">Invoice 2024-01-15.pdf</span>
+                <span class="r"><span class="tag dst">Done</span></span>
+              </div>
+              <div class="prow grp"><span class="l">Waiting to file</span></div>
+              <div class="prow">
+                <span class="l">Quarterly Report Q1.pdf</span>
+                <span class="r"><span class="tag new">Files in 2h</span></span>
+              </div>
+              <div class="prow">
+                <span class="l">App v2.3 Release.dmg</span>
+                <span class="r"><span class="tag new">Files in 2h</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RULES ============ -->
+<section id="rules" class="sec-dark">
+  <div class="wrap">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow">Rules</p>
+      <h2>Rules you write.<br>Not magic you trust.</h2>
+      <p class="lead">
+        Filing is deterministic: your file type decides where it goes, and a folder is
+        created only when a file actually needs one. <strong>Nothing is pre-made. Nothing is guessed.</strong>
+      </p>
+    </div>
+
+    <div class="taxo" data-reveal>
+      <div class="tcard">
+        <div class="ic" style="background:#64d2ff"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div>
+        <h4>Documents</h4><p>pdf · doc · docx · pages<br>txt · rtf · odt · md</p>
+      </div>
+      <div class="tcard">
+        <div class="ic" style="background:#30d158"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 4v16"/></svg></div>
+        <h4>Spreadsheets</h4><p>xls · xlsx · numbers<br>csv · tsv</p>
+      </div>
+      <div class="tcard">
+        <div class="ic" style="background:#ff9f0a"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/></svg></div>
+        <h4>Presentations</h4><p>ppt · pptx · key · odp</p>
+      </div>
+      <div class="tcard">
+        <div class="ic" style="background:#ffd60a"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg></div>
+        <h4>Images</h4><p>png · jpg · jpeg · heic<br>webp · gif · svg · tiff</p>
+      </div>
+      <div class="tcard">
+        <div class="ic" style="background:#ff375f"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z" fill="#0a0a0c" stroke="none"/></svg></div>
+        <h4>Video</h4><p>mp4 · mov · m4v<br>mkv · webm</p>
+      </div>
+      <div class="tcard">
+        <div class="ic" style="background:#bf5af2"><svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg></div>
+        <h4>Audio</h4><p>mp3 · m4a · wav<br>aiff · flac</p>
+      </div>
+      <div class="tcard">
+        <div class="ic" style="background:#8e8e93"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg></div>
+        <h4>Archives</h4><p>zip · 7z · rar<br>tar · gz</p>
+      </div>
+      <div class="tcard">
+        <div class="ic" style="background:#5ac8fa"><svg viewBox="0 0 24 24"><path d="M12 3v10m0 0 4-4m-4 4-4-4"/><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg></div>
+        <h4>Installers</h4><p>dmg · pkg · mpkg</p>
+      </div>
+      <div class="tcard">
+        <div class="ic" style="background:#636366"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></div>
+        <h4>Other</h4><p>anything unmatched —<br>only if something lands here</p>
+      </div>
+    </div>
+
+    <p class="lazy-note" data-reveal>
+      <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+      <span><strong style="color:#f5f5f7">Lazy folders.</strong> Intake never pre-creates an empty category. A folder appears the first time a file needs it — and not a day sooner.</span>
+    </p>
+
+    <div class="split" style="margin-top:72px">
+      <div data-reveal>
+        <h3 style="font-size:clamp(1.5rem,3vw,2rem);color:#f5f5f7">Go beyond file type.</h3>
+        <p class="body" style="color:#86868b;margin-top:14px">
+          Rules can match where a file came from, what it's called, or how big it is.
+          Combine them; the first match in your list wins. Source domains are read from
+          local file metadata — <strong style="color:#c7c7cc;font-weight:600">Intake never makes a network request to resolve one.</strong>
+        </p>
+        <p class="body" style="color:#86868b;margin-top:14px">
+          Add year or month subfolders — <span style="font-family:var(--mono);font-size:.9em;color:#c7c7cc">Images/2026-09/photo.jpg</span> — or keep it flat. The choice is per rule.
+        </p>
+      </div>
+      <div class="cond-list" data-reveal style="--d:120ms">
+        <div class="cond" style="background:#141416;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)">
+          <span class="ic" style="background:rgba(41,151,255,.16)"><svg viewBox="0 0 24 24" stroke="#2997ff"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></span>
+          <div><b style="color:#f5f5f7">Source domain</b><span style="color:#86868b">Everything from <code style="background:rgba(255,255,255,.08);color:#c7c7cc">bank.com</code> files itself</span></div>
+        </div>
+        <div class="cond" style="background:#141416;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)">
+          <span class="ic" style="background:rgba(41,151,255,.16)"><svg viewBox="0 0 24 24" stroke="#2997ff"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+          <div><b style="color:#f5f5f7">Name contains, starts with, wildcard</b><span style="color:#86868b"><code style="background:rgba(255,255,255,.08);color:#c7c7cc">Invoice*</code> meets its match</span></div>
+        </div>
+        <div class="cond" style="background:#141416;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)">
+          <span class="ic" style="background:rgba(41,151,255,.16)"><svg viewBox="0 0 24 24" stroke="#2997ff"><path d="M4 7h16M4 12h10M4 17h6"/></svg></span>
+          <div><b style="color:#f5f5f7">Size at least / at most</b><span style="color:#86868b">Send the big files somewhere else</span></div>
+        </div>
+        <div class="cond" style="background:#141416;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)">
+          <span class="ic" style="background:rgba(41,151,255,.16)"><svg viewBox="0 0 24 24" stroke="#2997ff"><path d="M8 4v16M16 4v16M4 8h16M4 16h16"/></svg></span>
+          <div><b style="color:#f5f5f7">Ordered and editable</b><span style="color:#86868b">Drag to reorder. First enabled match wins</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WATCH FOLDERS ============ -->
+<section id="folders">
+  <div class="wrap">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow">Watch folders</p>
+      <h2>Up to five folders.<br>Each with its own settings.</h2>
+      <p class="lead">
+        Downloads is the obvious one. Add Desktop, Screenshots, or any folder you like —
+        <strong>each keeps its own wait time, rules and toggles.</strong>
+      </p>
+    </div>
+
+    <div class="watch-grid">
+      <div class="wcard" data-reveal style="--d:0ms">
+        <div class="top">
+          <span class="ic"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+          <h4>Downloads</h4>
+        </div>
+        <span class="status"><span class="d"></span>Watching</span>
+        <p>Renaming on · Filing after 2 hours</p>
+      </div>
+      <div class="wcard" data-reveal style="--d:80ms">
+        <div class="top">
+          <span class="ic" style="background:linear-gradient(180deg,#7dd3ff,#0a84ff)"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+          <h4>Desktop</h4>
+        </div>
+        <span class="status"><span class="d"></span>Watching</span>
+        <p>Renaming on · Filing immediately</p>
+      </div>
+      <div class="wcard" data-reveal style="--d:160ms">
+        <div class="top">
+          <span class="ic" style="background:linear-gradient(180deg,#a78bfa,#5e5ce6)"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+          <h4>Screenshots</h4>
+        </div>
+        <span class="status paused"><span class="d"></span>Paused</span>
+        <p>Renaming on · Filing paused</p>
+      </div>
+      <div class="wcard" data-reveal style="--d:240ms">
+        <div class="top">
+          <span class="ic" style="background:linear-gradient(180deg,#ffe08a,#ff9f0a)"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+          <h4>Work</h4>
+        </div>
+        <span class="status"><span class="d"></span>Watching</span>
+        <p>Renaming on · Filing after 1 day</p>
+      </div>
+    </div>
+
+    <p class="cap-note" data-reveal>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+      <span><b>Five is the limit</b> — and each folder gets its own Pause, so one stalled folder never stops the rest.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ============ CONTROL: organize existing, activity, cleanup ============ -->
+<section id="control" class="sec-gray">
+  <div class="wrap">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow">Control</p>
+      <h2>See everything.<br>Change anything.</h2>
+      <p class="lead">
+        Intake never asks for blind trust. Every action is previewed before it happens,
+        logged after it happens, and <strong>reversible with one click.</strong>
+      </p>
+    </div>
+
+    <div class="split" style="margin-bottom:80px">
+      <div data-reveal>
+        <h3 style="font-size:clamp(1.5rem,3vw,2rem)">Tidy the files<br>already there.</h3>
+        <p class="body" style="margin-top:14px">
+          <strong style="color:var(--ink)">Organize Existing…</strong> scans the root of your watch folders and
+          shows you exactly what it would rename and where each file would go —
+          grouped by destination, with new folders marked.
+        </p>
+        <p class="body" style="margin-top:14px">
+          <strong style="color:var(--ink)">Nothing is touched until you click Organize.</strong>
+          It's a one-shot you run when you choose, and it works even with
+          Automatic organizing turned off.
+        </p>
+      </div>
+      <div class="visual" data-reveal style="--d:120ms">
+        <div class="sheet">
+          <div class="sheet-body">
+            <h4>Organize files already in Downloads?</h4>
+            <p>Intake will rename and file loose items in the folder root using your current rules. Files already in category folders are left alone.</p>
+            <div class="preview-list">
+              <div class="prow">
+                <span class="l">iPhone_setup_guide.pdf</span>
+                <span class="r"><span class="tag dst">Documents</span></span>
+              </div>
+              <div class="prow">
+                <span class="l">App_v2.3_Release.dmg</span>
+                <span class="r"><span class="tag new">Installers · New</span></span>
+              </div>
+              <div class="prow">
+                <span class="l">board Update deck final.pptx</span>
+                <span class="r"><span class="tag dst">Presentations</span></span>
+              </div>
+            </div>
+          </div>
+          <div class="sheet-actions">
+            <span class="mbtn">Cancel</span>
+            <span class="mbtn pri">Organize</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="split" style="direction:rtl;margin-bottom:80px">
+      <div data-reveal style="direction:ltr">
+        <div class="activity">
+          <div class="act-head"><b>Activity</b><span>Today</span></div>
+          <div class="arow">
+            <span class="verb renamed">Renamed</span>
+            <span class="txt"><b>Quarterly Report Q1.pdf</b><span class="arrow">was</span>quarterly-report-q1.pdf</span>
+            <span class="undo">Undo</span>
+          </div>
+          <div class="arow">
+            <span class="verb moved">Moved</span>
+            <span class="txt"><b>Documents</b><span class="arrow">←</span>Quarterly Report Q1.pdf</span>
+            <span class="undo">Undo</span>
+          </div>
+          <div class="arow">
+            <span class="verb renamed">Renamed</span>
+            <span class="txt"><b>Board Update Deck Final.pptx</b><span class="arrow">was</span>board Update deck final.pptx</span>
+            <span class="undo">Undo</span>
+          </div>
+          <div class="arow">
+            <span class="verb moved">Moved</span>
+            <span class="txt"><b>Installers</b><span class="arrow">←</span>App v2.3 Release.dmg</span>
+            <span class="undo">Undo</span>
+          </div>
+        </div>
+      </div>
+      <div data-reveal style="direction:ltr;--d:120ms">
+        <h3 style="font-size:clamp(1.5rem,3vw,2rem)">Every change,<br>with an Undo.</h3>
+        <p class="body" style="margin-top:14px">
+          Activity is a full audit trail — every rename, move, skip and error, newest first.
+          Reveal any file in Finder, copy its path, or put it back exactly where it was.
+        </p>
+        <p class="body" style="margin-top:14px">
+          <strong style="color:var(--ink)">Undo covers your recent renames and moves</strong> — the last twenty, kept in order.
+          Old entries stay in Activity as history.
+        </p>
+      </div>
+    </div>
+
+    <div class="split">
+      <div data-reveal>
+        <h3 style="font-size:clamp(1.5rem,3vw,2rem)">Cleanup asks first.<br>Always.</h3>
+        <p class="body" style="margin-top:14px">
+          Intake surfaces the candidates — stale files, duplicates, abandoned downloads,
+          and installers for apps you already have — with the reason beside each one.
+        </p>
+        <p class="body" style="margin-top:14px">
+          <strong style="color:var(--ink)">You decide every row:</strong> File Away, Keep, or Delete.
+          Nothing is removed without your confirmation, and anything you delete goes to the Trash.
+        </p>
+      </div>
+      <div class="visual" data-reveal style="--d:120ms">
+        <div class="queue">
+          <div class="qrow">
+            <span class="ic">ZIP</span>
+            <span class="qmeta">
+              <b>assets-final-v3.zip</b>
+              <span class="reason">Unused for 30 days</span>
+            </span>
+            <span class="qacts">
+              <span class="qbtn">File Away</span>
+              <span class="qbtn">Keep</span>
+              <span class="qbtn del">Delete…</span>
+            </span>
+          </div>
+          <div class="qrow">
+            <span class="ic">DMG</span>
+            <span class="qmeta">
+              <b>Firefox 128.0 installer.dmg</b>
+              <span class="reason">Installer · app already installed</span>
+            </span>
+            <span class="qacts">
+              <span class="qbtn">File Away</span>
+              <span class="qbtn">Keep</span>
+              <span class="qbtn del">Delete…</span>
+            </span>
+          </div>
+          <div class="qrow">
+            <span class="ic">PDF</span>
+            <span class="qmeta">
+              <b>Report (1).pdf</b>
+              <span class="reason dup">Duplicate of Report.pdf</span>
+            </span>
+            <span class="qacts">
+              <span class="qbtn">File Away</span>
+              <span class="qbtn">Keep</span>
+              <span class="qbtn del">Delete…</span>
+            </span>
+          </div>
+        </div>
+        <p class="queue-note">
+          <svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>The age threshold is yours — anywhere from 1 to 365 days.</span>
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CONTENT-AWARE ============ -->
+<section class="sec-dark">
+  <div class="wrap-n" style="text-align:center">
+    <div data-reveal>
+      <p class="eyebrow">Content-aware rename · Optional</p>
+      <h2>Names from what's inside.</h2>
+      <p class="lead" style="margin-top:20px">
+        Turn it on and Intake reads the first page of a PDF or an image, then proposes a
+        name like <strong>2026-09-14 Invoice Acme.pdf</strong>.
+        <strong>Off by default — and generated on your Mac with Apple's on-device model.</strong>
+      </p>
+    </div>
+
+    <div class="name-demo" data-reveal style="--d:120ms;margin-top:48px">
+      <div class="step-label">From the contents</div>
+      <div class="name-file">scan_0091.pdf</div>
+      <div class="name-out">2026-09-14 Invoice Acme.pdf</div>
+      <div class="name-badges">
+        <span class="nbadge">
+          <svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6z"/></svg>
+          On this Mac — contents never leave
+        </span>
+        <span class="nbadge">
+          <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+          PDFs and images
+        </span>
+        <span class="nbadge off">
+          <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          Off by default
+        </span>
+      </div>
+      <p style="font-size:.875rem;color:#86868b;margin-top:24px;line-height:1.5">
+        If the model isn't confident, the name it proposes is simply discarded —
+        <strong style="color:#c7c7cc;font-weight:600">your Title Case name stays.</strong>
+        OpenRouter is available as an alternative provider if you prefer, and Intake asks before any file text leaves your Mac.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRIVACY ============ -->
+<section id="privacy">
+  <div class="wrap">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow">Privacy</p>
+      <h2>It works on files.<br>Not on you.</h2>
+      <p class="lead">
+        Intake is local-first. It touches your files and nothing else —
+        <strong>and makes no network request unless you turn one on.</strong>
+      </p>
+    </div>
+
+    <div class="priv-grid">
+      <div class="pcard" data-reveal style="--d:0ms">
+        <span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+        <h3>Local by default</h3>
+        <p>Renames, rules, domain lookups and cleanup all run on your Mac. The default naming provider, <strong>On this Mac</strong>, sends file contents nowhere.</p>
+      </div>
+      <div class="pcard" data-reveal style="--d:90ms">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <h3>Asks at the right moment</h3>
+        <p>OpenRouter is opt-in and off by default. Intake asks before file text leaves your Mac, and before it requests notification permission — never at launch.</p>
+      </div>
+      <div class="pcard" data-reveal style="--d:180ms">
+        <span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+        <h3>No telemetry</h3>
+        <p>No analytics, no tracking, no update-checks pinging home. Feedback is a prefilled GitHub issue you send yourself, only when you choose to.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ NATIVE / BENTO ============ -->
+<section class="sec-gray">
+  <div class="wrap">
+    <div class="section-head" data-reveal>
+      <p class="eyebrow">Native citizen</p>
+      <h2>At home on your Mac.</h2>
+      <p class="lead">
+        A real macOS app — not a website in a trench coat.
+        <strong>It follows the platform, so it never fights it.</strong>
+      </p>
+    </div>
+
+    <div class="bento">
+      <div class="bcard" data-reveal style="--d:0ms">
+        <span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/></svg></span>
+        <h4>Dock & menu bar</h4>
+        <p>Status, Pause, Organize Existing… and Activity, always one click away. Hide either one — but not both.</p>
+      </div>
+      <div class="bcard" data-reveal style="--d:70ms">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 3v9l6 3"/></svg></span>
+        <h4>Notification digests</h4>
+        <p>Batched summaries, never one alert per file. Off by default; permission is only requested when you turn it on.</p>
+      </div>
+      <div class="bcard" data-reveal style="--d:140ms">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></span>
+        <h4>Light & dark mode</h4>
+        <p>System semantic colors throughout, so Intake looks correct next to every other window you have open.</p>
+      </div>
+      <div class="bcard" data-reveal style="--d:210ms">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M4 12h16M12 4v16"/><circle cx="12" cy="12" r="9"/></svg></span>
+        <h4>Reduce Motion aware</h4>
+        <p>Animations respect your accessibility settings, alongside Increase Contrast and Reduce Transparency.</p>
+      </div>
+      <div class="bcard" data-reveal style="--d:280ms">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4"/></svg></span>
+        <h4>Pause anything</h4>
+        <p>Pause filing from the menu bar, per folder. Renaming keeps working — the two controls are independent.</p>
+      </div>
+      <div class="bcard" data-reveal style="--d:350ms">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6z"/></svg></span>
+        <h4>Signed & notarized</h4>
+        <p>Built with a Developer ID and notarized by Apple. Open the DMG, drag to Applications, done — no workarounds.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section>
+  <div class="wrap-n">
+    <div class="section-head" data-reveal style="margin-bottom:40px">
+      <p class="eyebrow">Questions</p>
+      <h2>Good to know.</h2>
+    </div>
+    <div class="faq" data-reveal>
+      <details>
+        <summary>Why isn't Intake filing my downloads?</summary>
+        <div class="ans">Files wait out <strong>Wait before organizing</strong> — two hours by default — before they're filed. If the menu bar shows <strong>Paused</strong>, or <strong>Automatic organizing</strong> is off, filing stops while renaming keeps going. A folder marked <strong>Needs access</strong> can be re-granted in Settings → General.</div>
+      </details>
+      <details>
+        <summary>Can I get a file back where it was?</summary>
+        <div class="ans">Yes. Open <strong>Activity</strong> and click <strong>Undo</strong> on the rename or the move. Your most recent twenty changes are undoable; older entries remain in Activity as history.</div>
+      </details>
+      <details>
+        <summary>Will it reorganize files I already have?</summary>
+        <div class="ans">Only when you ask. <strong>Organize Existing…</strong> never runs on its own, and it previews every rename and move before you commit. Files already sitting in category folders are always left alone.</div>
+      </details>
+      <details>
+        <summary>Does it send my files anywhere?</summary>
+        <div class="ans">No. Intake works on local files only. It makes a network request only if you enable <strong>OpenRouter</strong> for folder suggestions or content-aware names — both off by default — or if you choose <strong>Send Feedback…</strong>. The default naming provider runs entirely on your Mac.</div>
+      </details>
+      <details>
+        <summary>What does it cost?</summary>
+        <div class="ans">Intake is <strong>free and open source</strong> under the MIT license. Releases are signed with a Developer ID and notarized by Apple, with a SHA-256 checksum published for every download.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINAL CTA ============ -->
+<section class="final">
+  <div class="wrap-n">
+    <div data-reveal>
+      <h2>A tidy Downloads,<br>without the tidying.</h2>
+      <p class="lead">Requires macOS 26 or later. Apple silicon or Intel.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/intelligentrascal/intake/releases/latest">Download for macOS</a>
+        <a class="btn btn-outline" href="https://github.com/intelligentrascal/intake">View on GitHub</a>
+      </div>
+      <div class="specs">
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Free &amp; open source</span>
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Signed &amp; notarized</span>
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>No telemetry</span>
+        <span><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Runs entirely on your Mac</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-in">
+    <span>Copyright © 2026 Intake. MIT licensed.</span>
+    <div class="foot-links">
+      <a href="https://github.com/intelligentrascal/intake">GitHub</a>
+      <a href="https://github.com/intelligentrascal/intake/releases/latest">Releases</a>
+      <a href="https://github.com/intelligentrascal/intake/blob/main/docs/PRODUCT.md">Documentation</a>
+      <a href="https://github.com/intelligentrascal/intake/issues">Feedback</a>
+      <a href="https://github.com/intelligentrascal/intake/blob/main/SECURITY.md">Security</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- Scroll reveals ---- */
+  var revealEls = document.querySelectorAll('[data-reveal]');
+  if (reduce || !('IntersectionObserver' in window)) {
+    revealEls.forEach(function(el){ el.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { rootMargin:'0px 0px -8% 0px', threshold:0.12 });
+    revealEls.forEach(function(el){ io.observe(el); });
+  }
+
+  /* ---- Hero demo loop: rename, then file ---- */
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#demo [data-file]'));
+  if (!rows.length) return;
+
+  function clear(){ rows.forEach(function(r){ r.classList.remove('clean','filed'); }); }
+
+  if (reduce) {
+    rows.forEach(function(r){ r.classList.add('clean','filed'); });
+    return;
+  }
+
+  function run(){
+    clear();
+    rows.forEach(function(row, i){
+      var t = 500 + i * 620;
+      setTimeout(function(){ row.classList.add('clean'); }, t);
+      setTimeout(function(){ row.classList.add('filed'); }, t + 700);
+    });
+    setTimeout(run, 500 + rows.length * 620 + 700 + 3800);
+  }
+
+  var started = false;
+  function start(){ if(!started){ started = true; run(); } }
+
+  if ('IntersectionObserver' in window) {
+    var demoIO = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting){ start(); demoIO.disconnect(); }
+      });
+    }, { threshold:0.3 });
+    demoIO.observe(document.getElementById('demo'));
+  } else { start(); }
+})();
+</script>
+
+</body>
+</html>

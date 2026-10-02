@@ -6,6 +6,8 @@
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-black?logo=apple)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+**Website:** [intelligentrascal.github.io/intake](https://intelligentrascal.github.io/intake/)
+
 <a href="docs/media/intake-demo.mp4"><img src="docs/media/intake-demo.gif" alt="Intake demo: a messy Downloads folder, then file names snapping into clean Title Case and being filed into folders" width="800"></a>
 
 ▶ [Watch the full 21-second demo with sound](docs/media/intake-demo.mp4)
