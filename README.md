@@ -34,7 +34,7 @@
 - **Organize Existing…** previews every rename and move for files already sitting in a folder. Nothing is touched until you click Organize.
 - **Undo** any rename or move from Activity, a full audit trail.
 - **Cleanup** finds stale files, duplicates, abandoned downloads and installers for apps you already have. Nothing is deleted without your confirmation, and deleted files go to the Trash.
-- **Optional content-aware names**, such as `2026-09-14 Invoice Acme September Hosting.pdf`. These are generated on your Mac with Apple's on-device model, or with OpenRouter if you choose it. The default template includes `{subject}`, and for PDFs a non-junk Title is used as a naming hint. Off by default.
+- **Optional content-aware names**, such as `2026-09-14 Invoice Acme September Hosting.pdf`. These are generated on your Mac with Apple's on-device model, or with OpenRouter if you choose it. The default template is `{date} {type} {organization} {subject}`, and for PDFs a non-junk Title is used as a naming hint. Off by default.
 - **Native citizen.** Dock and menu bar, a Settings window, notification digests (off by default), and support for light/dark mode and Reduce Motion.
 
 ## Install

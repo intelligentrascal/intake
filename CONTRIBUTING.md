@@ -7,7 +7,7 @@ Thanks for helping with Intake.
 - macOS-native SwiftUI; follow Apple HIG and `docs/DESIGN.md`
 - Do not vendor or copy GPL code from Thaw or similar projects
 - Prefer small, focused PRs with a clear problem statement
-- UI-visible changes: attach before/after screenshots when possible
+- UI-visible changes: attach before/after screenshots when possible. Drag them into the pull request so GitHub hosts them as user-attachments. Do not link screenshots from the feature branch; those URLs 404 after the branch is deleted.
 
 ## Setup
 
