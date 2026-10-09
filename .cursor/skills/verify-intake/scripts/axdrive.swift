@@ -7,7 +7,7 @@
 //
 // Built by scripts/build.sh into $VERIFY_ROOT/bin/axdrive. Usage: axdrive <pid> <command> [args]
 //   windows                      list AX windows: title | frame | CGWindowID (empty while the Mac is locked)
-//   cgwindows                    list WindowServer windows owned by the pid: id | title | frame (works while locked)
+//   cgwindows [all]              on-screen WindowServer windows of the pid: id | title | frame (works while locked; "all" adds hidden ones)
 //   tree [maxDepth]              dump the AX tree of every window (role, title, description, value)
 //   extra-items                  list the menu bar extra (status item) menu items
 //   extra-press <title>          press a menu item of the menu bar extra by exact title
@@ -82,11 +82,15 @@ func press(_ el: AXUIElement) {
     let r = AXUIElementPerformAction(el, kAXPressAction as CFString)
     if r != .success { fail("axdrive: AXPress failed (\(r.rawValue))", 5) }
 }
-func cgWindowIDs() -> [(Int, String, CGRect)] {
+/// Normal-layer WindowServer windows of the pid. `onscreenOnly` drops windows
+/// that exist but are hidden (e.g. the Activity window SwiftUI creates and
+/// hides at launch).
+func cgWindowIDs(onscreenOnly: Bool = false) -> [(Int, String, CGRect)] {
     let list = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
     return list.compactMap { info in
         guard (info[kCGWindowOwnerPID as String] as? Int32) == pid,
               (info[kCGWindowLayer as String] as? Int) == 0,
+              !onscreenOnly || (info[kCGWindowIsOnscreen as String] as? Bool) == true,
               let id = info[kCGWindowNumber as String] as? Int else { return nil }
         let b = info[kCGWindowBounds as String] as? [String: CGFloat] ?? [:]
         let rect = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
@@ -124,7 +128,8 @@ case "windows":
         print("\(str(w, kAXTitleAttribute)) | \(Int(f.origin.x)),\(Int(f.origin.y)) \(Int(f.width))x\(Int(f.height)) | cgwindow=\(match.map { String($0.0) } ?? "?")")
     }
 case "cgwindows":
-    for (id, name, r) in cgWindowIDs() {
+    // Only windows the user can see; pass "all" to include hidden ones.
+    for (id, name, r) in cgWindowIDs(onscreenOnly: rest.first != "all") {
         print("\(id) | \(name) | \(Int(r.origin.x)),\(Int(r.origin.y)) \(Int(r.width))x\(Int(r.height))")
     }
 case "tree":

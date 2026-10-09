@@ -7,7 +7,7 @@
 #   scripts/drive.sh menu <menu> <item>          choose a main-menu item, e.g. menu Intake "Settings…" / menu Intake Activity
 #   scripts/drive.sh press <label>               press a button / sidebar row / menu item in an open window, e.g. press AI
 #   scripts/drive.sh windows                     AX windows (title, frame, CG window id) — empty while the Mac is locked
-#   scripts/drive.sh cgwindows                   WindowServer windows of the pid (works while locked)
+#   scripts/drive.sh cgwindows [all]             on-screen WindowServer windows of the pid (works while locked; all = include hidden)
 #   scripts/drive.sh tree [depth]                AX tree of every window
 #   scripts/drive.sh wait-window <title> [secs]  e.g. wait-window AI 10
 #   scripts/drive.sh wait-text <text> [secs]     e.g. wait-text "Quarterly Report Q1.pdf" 10

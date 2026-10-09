@@ -36,7 +36,7 @@ Preconditions:
 
 ## Gotchas
 
-- The window stays suppressed at launch by design; only the entry points above open it.
+- The window is meant to stay suppressed at launch, but `cgwindows` has listed an on-screen `Activity` window right after launch while the Mac was locked (the launch-time hide did not take). Window presence is not proof that `Open Activity` worked; prove it with `wait-text` / a screenshot in an unlocked session.
 - Settings and the standalone window can both be titled `Activity`; use `cgwindows` ids, not titles alone, when screenshotting.
 - Each row is one combined accessibility element (`accessibilityElement(children: .combine)`); if `press Undo` finds no separate button, use the row's context menu in a visible session or prove Undo from the toast.
 - `Reveal in Finder` / double-click open Finder windows on the owner's screen; capture and close them, or prove reveal by the enabled state only.
