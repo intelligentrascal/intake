@@ -2,7 +2,11 @@ import Foundation
 import Security
 
 enum OpenRouterKeychain: Sendable {
-    private static let service = "app.intake.Intake.openrouter"
+    /// `app.intake.Intake.openrouter` for the shipping app (unchanged). Derived
+    /// from the bundle id so a build with another id — the verify-intake
+    /// verification build (`app.intake.Intake.verify`) — never reads, prompts
+    /// for, or overwrites the installed app's OpenRouter key.
+    private static let service = "\(Bundle.main.bundleIdentifier ?? "app.intake.Intake").openrouter"
     private static let account = "apiKey"
 
     static func save(_ secret: String) {
