@@ -47,3 +47,6 @@ AuthKey*.p8
 
 # /brag launch-video build output
 brag-output*/
+
+# verify-intake skill: isolated build, run state, and proof artifacts
+.verify-intake/
