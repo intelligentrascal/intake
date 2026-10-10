@@ -27,8 +27,13 @@ public enum ContentAwareFileType: String, CaseIterable, Codable, Sendable, Ident
 
 /// Where content-aware rename gets document fields from. Text is always
 /// extracted on this Mac; only the OpenRouter provider sends that text
-/// off-device.
+/// off-device. Picker order is Offline model (default) · Apple Intelligence ·
+/// OpenRouter (SPEC §11).
 public enum ContentAwareRenameProvider: String, CaseIterable, Codable, Sendable, Identifiable {
+    /// Intake's downloadable offline model (llama.cpp, GGUF). The default.
+    case localModel
+    /// Apple Intelligence (`SystemLanguageModel.default`). Raw value kept for
+    /// settings written by 1.3.
     case onDevice
     case openRouter
 
@@ -36,13 +41,20 @@ public enum ContentAwareRenameProvider: String, CaseIterable, Codable, Sendable,
 
     public var title: String {
         switch self {
-        case .onDevice: "On this Mac"
+        case .localModel: "Offline model"
+        case .onDevice: "Apple Intelligence"
         case .openRouter: "OpenRouter"
         }
     }
+
+    /// Only OpenRouter sends extracted text off this Mac.
+    public var sendsTextOffDevice: Bool {
+        self == .openRouter
+    }
 }
 
-/// Settings for content-aware rename. Off by default.
+/// Settings for content-aware rename. Off until the offline model is
+/// downloaded and verified (or the user turns it on for another provider).
 public struct ContentAwareRenameSettings: Equatable, Codable, Sendable {
     public static let defaultsKey = "intake.contentAwareRename"
     /// How long filing waits for a content name before using the Title Case one.
@@ -57,7 +69,7 @@ public struct ContentAwareRenameSettings: Equatable, Codable, Sendable {
 
     public init(
         isEnabled: Bool = false,
-        provider: ContentAwareRenameProvider = .onDevice,
+        provider: ContentAwareRenameProvider = .localModel,
         fileTypes: Set<ContentAwareFileType> = [.pdf, .images],
         template: String = ContentNameTemplate.defaultTemplate
     ) {
@@ -85,6 +97,8 @@ public struct ContentAwareRenameSettings: Equatable, Codable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        // Settings written before providers existed meant Apple's on-device
+        // model; `OfflineModelMigration` moves disabled ones to `.localModel`.
         provider = try container.decodeIfPresent(ContentAwareRenameProvider.self, forKey: .provider) ?? .onDevice
         let rawTypes = try container.decodeIfPresent([String].self, forKey: .fileTypes)
         fileTypes = rawTypes.map { Set($0.compactMap(ContentAwareFileType.init(rawValue:))) }
@@ -213,6 +227,7 @@ extension IngestPipeline {
     public func applyContentRename(
         at fileURL: URL,
         to proposedFileName: String,
+        afterFiling: Bool = false,
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws -> (url: URL, entries: [ActivityEntry]) {
@@ -251,13 +266,15 @@ extension IngestPipeline {
                 ActivityEntry(
                     date: now,
                     kind: .renamed,
-                    detail: "Renamed \(source.lastPathComponent) to \(uniqueName) from its contents",
+                    detail: afterFiling
+                        ? "Renamed after filing: \(source.lastPathComponent) to \(uniqueName) from its contents"
+                        : "Renamed \(source.lastPathComponent) to \(uniqueName) from its contents",
                     url: destination,
                     fileName: uniqueName,
                     destinationFolder: isFiled ? filedFolderName(for: directory) : nil,
                     beforePath: source.path,
                     afterPath: destination.path,
-                    renameSource: .contentAware
+                    renameSource: afterFiling ? .contentAwareAfterFiling : .contentAware
                 ),
             ]
         )

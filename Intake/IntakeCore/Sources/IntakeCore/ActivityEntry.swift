@@ -16,6 +16,8 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable, Codable {
         case titleCase
         /// The content-aware namer (template + validator).
         case contentAware
+        /// The offline model renamed a queued file where it was filed (SPEC §9.3).
+        case contentAwareAfterFiling
     }
 
     public var id: UUID

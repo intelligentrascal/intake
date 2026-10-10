@@ -226,11 +226,11 @@ struct ContentAwareRenameSettingsTests {
     }
 
     @Test
-    func providerDefaultsToOnDeviceAndRoundTrips() {
+    func providerDefaultsToOfflineModelAndRoundTrips() {
         let suite = "intake.tests.content-aware.provider.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
-        #expect(ContentAwareRenameSettings.load(from: defaults).provider == .onDevice)
+        #expect(ContentAwareRenameSettings.load(from: defaults).provider == .localModel)
 
         let openRouter = ContentAwareRenameSettings(
             isEnabled: true,
@@ -478,6 +478,30 @@ struct ContentAwareIngestPipelineTests {
         #expect(result.url.lastPathComponent == "2026-09-14 Invoice ACME.pdf")
         #expect(result.entries.first?.destinationFolder == "Documents")
         #expect(result.entries.first?.renameSource == .contentAware)
+    }
+
+    @Test
+    func queuedOfflineRenameAfterFilingIsLabeledAndUndoable() throws {
+        let fileManager = FileManager.default
+        let root = try makeTempWatchFolder()
+        defer { try? fileManager.removeItem(at: root) }
+        let file = root.appendingPathComponent("Inv 88123.pdf")
+        try Data("%PDF".utf8).write(to: file)
+        let pipeline = IngestPipeline(watchFolder: root)
+        let filed = try #require(try pipeline.applyRoute(at: file, fileManager: fileManager).first?.url)
+
+        let result = try pipeline.applyContentRename(
+            at: filed,
+            to: "2026-09-14 Invoice ACME.pdf",
+            afterFiling: true,
+            fileManager: fileManager
+        )
+        let entry = try #require(result.entries.first)
+        #expect(entry.renameSource == .contentAwareAfterFiling)
+        #expect(entry.detail == "Renamed after filing: Inv 88123.pdf to 2026-09-14 Invoice ACME.pdf from its contents")
+        #expect(entry.destinationFolder == "Documents")
+        #expect(entry.beforePath == filed.path)
+        #expect(entry.afterPath == result.url.path)
     }
 
     @Test
