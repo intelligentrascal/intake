@@ -36,5 +36,6 @@ Each feature file starts with an H1 and one paragraph describing the user-visibl
 - [Activity window](./activity.md) — the audit trail, Reveal, Copy path, Undo.
 - [AI pane: content-aware rename](./ai-content-aware-rename.md) — default name template, naming provider, file types, Try on a File…, OpenRouter gating.
 - [Organize Existing](./organize-existing.md) — preview, exclude, Cancel / Organize for files already in the watch-folder root.
+- [Offline model](./offline-model.md) — `Set Up Offline Renaming…`, the setup window (O1–O5), download / pause / cancel, the Settings ▸ AI card and Run the offline model, `Waiting to rename` rows.
 
 Not yet mapped (see `docs/FEATURE-MAP.md` for their UI): Rules editor and suggestions, Cleanup queue, General watch-folder management, Notifications, Feedback, About.

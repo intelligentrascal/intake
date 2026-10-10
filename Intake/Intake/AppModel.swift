@@ -158,10 +158,18 @@ final class AppModel {
     var organizeTargetProfileID: String?
     /// True while the preview is reading eligible files for content-aware names.
     var organizeReadingContents = false
-    /// Content-aware rename (GH-32). Off by default; provider is on-device or OpenRouter.
+    /// Content-aware rename (GH-32). Provider is the Offline model (default
+    /// since 1.4), Apple Intelligence or OpenRouter.
     var contentAwareRename: ContentAwareRenameSettings {
-        didSet { contentAwareRename.save(to: .standard) }
+        didSet {
+            contentAwareRename.save(to: .standard)
+            if oldValue.provider != contentAwareRename.provider {
+                offlineModel.providerChanged(to: contentAwareRename.provider)
+            }
+        }
     }
+    /// Offline model setup, download, run policy and rename queue (1.4).
+    let offlineModel: OfflineModelController
     /// Refreshed when the AI pane appears and before each use.
     var contentAwareAvailability: OnDeviceModelAvailability = .current
     var snoozedUntil: [String: Date] {
@@ -203,6 +211,9 @@ final class AppModel {
 
     init() {
         let defaults = UserDefaults.standard
+        // 1.4 provider migration runs before anything else writes defaults, so
+        // "is this an upgrade?" still sees only what an earlier Intake wrote.
+        let migratedContentAware = OfflineModelMigration.migrateIfNeeded(defaults: defaults)
         // Do not read `self` until every stored property is set (Swift 6 / @Observable).
         // First launch after 1.2 migrates the single watch folder, its Rename / Wait /
         // Automatic organizing settings and its Wait queue into profile #1.
@@ -232,10 +243,12 @@ final class AppModel {
         activity = Self.loadActivity()
         undoService = UndoService.load(from: .standard)
         openRouterSpendTracker = OpenRouterSpendTracker.load(from: .standard)
-        contentAwareRename = ContentAwareRenameSettings.load(from: .standard)
+        contentAwareRename = migratedContentAware
+        offlineModel = OfflineModelController(defaults: defaults)
         snoozedUntil = Self.loadSnooze()
         cleanupCandidates = []
         launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
+        offlineModel.attach(to: self)
         watchFolderControllers = watchFolderProfiles.map {
             WatchFolderController(profile: $0, model: self)
         }
@@ -259,6 +272,7 @@ final class AppModel {
         if firstRun {
             showFirstRunTip = true
         }
+        offlineModel.start(isFirstRun: firstRun && !OfflineModelMigration.wasUpgrade(defaults: .standard))
         Task { @MainActor in
             // Defense in depth: `.defaultLaunchBehavior(.suppressed)` should already
             // keep Activity off-screen. Hide anything restoration still presented.
@@ -777,6 +791,11 @@ final class AppModel {
         for scans: [(controller: WatchFolderController, scan: OrganizeExistingScan)]
     ) {
         guard let renamer = contentAwareRenamer() else { return }
+        // The offline model reads a preview's files as one batch (SPEC §9.2):
+        // when the policy says wait, the preview keeps Title Case names.
+        if contentAwareRename.provider == .localModel, !offlineModel.decide(.batch).shouldRun {
+            return
+        }
         let normalizer = FileNameNormalizer()
         let candidates = scans.flatMap(\.scan.eligible)
             .filter { renamer.isEligible($0) }
@@ -819,6 +838,22 @@ final class AppModel {
     /// `nil` means the selected provider is ready.
     func contentAwareProviderBlockMessage() -> String? {
         switch contentAwareRename.provider {
+        case .localModel:
+            if offlineModel.isUnsupported {
+                return OfflineModelRecommendation.unsupportedMessage
+            }
+            switch offlineModel.modelProblem {
+            case .damaged:
+                return "The model file is missing or damaged. Download it again."
+            case .loadFailed:
+                return "The model couldn't start. Try a smaller size."
+            case nil:
+                break
+            }
+            if !offlineModel.isModelInstalled {
+                return "Download the offline model below to rename files from their contents. Until then, files keep their Title Case names."
+            }
+            return nil
         case .onDevice:
             contentAwareAvailability = .current
             return contentAwareAvailability.message
@@ -837,6 +872,10 @@ final class AppModel {
     /// provider isn’t ready.
     func makeContentAwareNamer() -> (any ContentNamer)? {
         switch contentAwareRename.provider {
+        case .localModel:
+            // No cloud or Apple Intelligence fallback: without a verified
+            // model, files keep their Title Case names.
+            return offlineModel.contentNamer()
         case .onDevice:
             contentAwareAvailability = .current
             guard contentAwareAvailability.isAvailable else { return nil }
@@ -863,6 +902,10 @@ final class AppModel {
         if let message = contentAwareProviderBlockMessage() {
             return message
         }
+        // Try on a File… is a Rename Now: only thermal / memory critical stop it.
+        if contentAwareRename.provider == .localModel, !offlineModel.decide(.renameNow).shouldRun {
+            return OfflineModelController.blockedMessage
+        }
         guard let namer = makeContentAwareNamer() else {
             return contentAwareProviderBlockMessage()
                 ?? "Content-aware rename isn’t available right now."
@@ -883,6 +926,35 @@ final class AppModel {
         case .fallback(let reason):
             return "Keeps “\(titleCase)”. \(reason.reasonText)"
         }
+    }
+
+    /// The content-aware renamer for queued offline renames: always the
+    /// offline model, with the user's file types and template.
+    func offlineRenamer() -> ContentAwareRenamer? {
+        guard let namer = offlineModel.contentNamer() else { return nil }
+        var settings = contentAwareRename
+        settings.isEnabled = true
+        return ContentAwareRenamer(settings: settings, extractor: OnDeviceTextExtractor(), namer: namer)
+    }
+
+    /// True while `url` is still inside the queued file's watch folder (root
+    /// or a filed folder), so a file the user moved away is left alone.
+    func isInsideWatchFolder(_ url: URL, profileID: String?) -> Bool {
+        if let profileID, let controller = watchFolderController(id: profileID) {
+            return controller.contains(url) && !controller.accessLost
+        }
+        return watchFolderController(containing: url) != nil
+    }
+
+    /// A queued file got its content name: rename it where it is now.
+    func applyDeferredContentRename(at url: URL, to name: String, profileID: String?) {
+        let controller = profileID.flatMap { watchFolderController(id: $0) }
+            ?? watchFolderController(containing: url)
+        controller?.applyDeferredContentRename(at: url, to: name)
+    }
+
+    func deliverOfflineSetupReminder(title: String, body: String) {
+        notificationDigestService.deliverOfflineSetupReminder(title: title, body: body)
     }
 
     func confirmOrganizePreview() {

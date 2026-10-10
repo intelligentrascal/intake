@@ -177,6 +177,9 @@ final class WatchFolderController {
         guard FileManager.default.fileExists(atPath: reportedURL.path) else { return }
         let url = FileIdentity.onDiskURL(for: reportedURL)
         let current = applyRenameOnStableIfNeeded(url)
+        if current.lastPathComponent != url.lastPathComponent {
+            noteTitleCaseRenameForReminder(current)
+        }
         startContentRenameIfNeeded(current)
         rememberStable(current, stableAt: stableAt)
         if !profile.isOrganizing {
@@ -213,8 +216,18 @@ final class WatchFolderController {
     /// look for a richer name in the background. Follows this folder's
     /// Rename when download finishes setting.
     private func startContentRenameIfNeeded(_ url: URL) {
-        guard profile.renameWhenDownloadFinishes,
-              let renamer = model.contentAwareRenamer(),
+        guard profile.renameWhenDownloadFinishes else { return }
+        // Offline model: the run policy decides now or later (SPEC §9.2). A
+        // queued file keeps its Title Case name and is filed as usual; it is
+        // renamed where it was filed when conditions allow.
+        let settings = model.contentAwareRename
+        let offline = model.offlineModel
+        if settings.provider == .localModel, offline.isModelInstalled, settings.isEligible(url),
+           case .wait(let reason, _) = offline.decide(.singleNewFile) {
+            offline.enqueue(url, watchFolderID: profileID, reason: reason)
+            return
+        }
+        guard let renamer = model.contentAwareRenamer(),
               renamer.isEligible(url)
         else { return }
         let id = contentTracker.begin(for: url, at: Date())
@@ -251,6 +264,50 @@ final class WatchFolderController {
                 persistWaitingForAge()
             }
             if let index = arrivedWhilePaused.firstIndex(where: { $0.standardizedFileURL == old }) {
+                arrivedWhilePaused[index] = new
+            }
+        } catch {
+            model.record(
+                ActivityEntry(
+                    kind: .error,
+                    detail: "Could not rename \(current.lastPathComponent) from its contents: \(error.localizedDescription)",
+                    url: current,
+                    fileName: current.lastPathComponent
+                ),
+                watchFolderID: profileID
+            )
+        }
+    }
+
+    /// The 7-day setup reminder fires on a PDF or image that just got only a
+    /// Title Case name (SPEC §8.5). The controller checks every other condition.
+    private func noteTitleCaseRenameForReminder(_ url: URL) {
+        let ext = url.pathExtension.lowercased()
+        guard ContentAwareFileType.allCases.contains(where: { $0.extensions.contains(ext) }) else { return }
+        model.offlineModel.noteTitleCaseRename(fileName: url.lastPathComponent)
+    }
+
+    /// A queued offline rename landed: rename the file where it is now (root
+    /// or the folder it was filed into). Recorded as "Renamed after filing"
+    /// when it already left the watch folder root; undoable from Activity.
+    func applyDeferredContentRename(at url: URL, to name: String) {
+        let current = url.standardizedFileURL
+        guard FileManager.default.fileExists(atPath: current.path) else { return }
+        let inRoot = current.deletingLastPathComponent() == folder.standardizedFileURL
+        do {
+            let result = try pipeline.applyContentRename(at: current, to: name, afterFiling: !inRoot)
+            guard !result.entries.isEmpty else { return }
+            model.recordOrganized(result.entries, watchFolderID: profileID)
+            let new = result.url.standardizedFileURL
+            if inRoot {
+                watcher.acknowledgeRootFile(named: new.lastPathComponent)
+                watcher.acknowledgeRootFile(named: current.lastPathComponent)
+            }
+            if let index = waitingForAge.firstIndex(where: { $0.url == current }) {
+                waitingForAge[index].url = new
+                persistWaitingForAge()
+            }
+            if let index = arrivedWhilePaused.firstIndex(where: { $0.standardizedFileURL == current }) {
                 arrivedWhilePaused[index] = new
             }
         } catch {
@@ -410,6 +467,8 @@ final class WatchFolderController {
             // Timed out: a late content name renames the file where it was filed.
             if let filed = entries.last(where: { $0.kind == .moved })?.url {
                 contentTracker.noteMoved(from: url, to: filed)
+                // A file waiting for the offline model follows its filing.
+                model.offlineModel.noteMoved(from: url, to: filed)
             }
             return true
         case .skipped(let entry), .error(let entry):

@@ -5,10 +5,14 @@ Native macOS app (Dock + menu bar). Open `Intake.xcodeproj` in Xcode (macOS 26+)
 ## Layout
 
 ```text
-Intake.xcodeproj     # app target, local IntakeCore package
+Intake.xcodeproj     # app target, local IntakeCore + IntakeLlama packages
 Intake/              # SwiftUI + AppKit chrome (MenuBarExtra, Settings, Dock policy)
-IntakeCore/          # taxonomy, ignore policy, rename-then-route, activity, cleanup
+IntakeCore/          # taxonomy, ignore policy, rename-then-route, activity, cleanup,
+                     # offline model manifest, policy, queue, download + onboarding state
+IntakeLlama/         # LlamaRuntime: the offline model runtime over llama.cpp
 ```
+
+`IntakeLlama` pins the llama.cpp `b11552` xcframework (universal arm64 + x86_64, Metal embedded) as an SPM `binaryTarget` by URL and checksum. Xcode downloads it (about 63 MB) the first time it resolves packages. To move to a newer llama.cpp release, change the URL and run `swift package compute-checksum` on the downloaded zip. The tier list (sizes, URLs, SHA-256) lives in one place: `IntakeCore/Sources/IntakeCore/OfflineModelManifest.swift`.
 
 ## Core tests
 
@@ -46,4 +50,5 @@ Dock must stay on (default) so cold launch presents Settings (`activationPolicy`
 - General → Organizing uses **Automatic organizing** (not Pause), **Rename when download finishes** (default on; local rename as soon as the file is stable), and **Wait before organizing** (default 2 hours; Immediately / 15 minutes / 1 hour / 2 hours / 1 day). Wait delays filing into folders only. Organize Existing does not wait.
 - The watcher ignores partial downloads, `.download` bundles, and quarantine metadata-only events. Once the file is stable, Intake can rename it in the watch-folder root, then waits until **Wait before organizing** has elapsed before routing by editable rules. **Organize Existing…** applies the combined rename → route pipeline immediately to loose files already in the watch-folder root (not category folders). Enabled rules, custom rules, and Activity persist across launches.
 - Rules can be edited, reordered, and extended; on-device suggestions stay local (no network, no file contents).
+- Content-aware rename defaults to the **Offline model** provider (then Apple Intelligence, OpenRouter). Settings → AI shows its card; the menu bar shows **Set Up Offline Renaming…** until a model is installed, and the download ring while one is downloading. Models live in `~/Library/Containers/app.intake.Intake/Data/Library/Application Support/Intake/Models` and are excluded from backups.
 - Cleanup scans unused files and supports File Away, Keep, and Delete. OpenRouter is the first opt-in AI provider (Keychain). Other providers are PATH-detected (Available / Not installed) and not called yet.

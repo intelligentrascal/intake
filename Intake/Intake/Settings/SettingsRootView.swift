@@ -7,6 +7,7 @@ struct SettingsRootView: View {
     @Environment(\.colorSchemeContrast) private var contrast
     var body: some View {
         @Bindable var model = model
+        @Bindable var offline = model.offlineModel
         HStack(spacing: 0) {
             SettingsSidebar()
                 .frame(width: 192)
@@ -35,8 +36,21 @@ struct SettingsRootView: View {
         .overlay(alignment: .topLeading) {
             PaneKeyboardShortcuts()
         }
+        .background {
+            OfflineSetupOpenBridge()
+                .environment(model)
+        }
         .onAppear {
             SettingsSplitViewAutosave.resetSettingsSplitFrames()
+        }
+        // 1.4 upgraders, once ever (SPEC §8.5): Set Up… / Not Now.
+        .sheet(isPresented: $offline.upgradeSheetPresented, onDismiss: {
+            if !model.offlineModel.setup.upgradeSheetShown {
+                model.offlineModel.upgradeSheetChoseNotNow()
+            }
+        }) {
+            OfflineUpgradeSheet()
+                .environment(model)
         }
         .alert(
             "Keep one way to open Intake",

@@ -15,6 +15,9 @@ final class NotificationDigestService: NSObject {
     nonisolated static let showActivityActionID = "intake.action.showActivity"
     nonisolated static let undoActionID = "intake.action.undo"
     nonisolated static let undoActivityIDKey = "undoActivityID"
+    nonisolated static let offlineSetupCategoryID = "intake.offlineModel.reminder"
+    nonisolated static let offlineSetUpActionID = "intake.action.offlineSetUp"
+    nonisolated static let offlineNotNowActionID = "intake.action.offlineNotNow"
 
     /// Heartbeat cadence for quiet-period / throttle checks — matches the
     /// cadence AppModel already uses for its Wait-before-organizing heartbeat.
@@ -121,7 +124,39 @@ final class NotificationDigestService: NSObject {
             intentIdentifiers: [],
             options: []
         )
-        UNUserNotificationCenter.current().setNotificationCategories([filed, errors, cleanup])
+        // The one-time offline setup reminder (SPEC §8.5): Set Up… / Not Now.
+        let setUp = UNNotificationAction(
+            identifier: Self.offlineSetUpActionID,
+            title: "Set Up…",
+            options: [.foreground]
+        )
+        let notNow = UNNotificationAction(
+            identifier: Self.offlineNotNowActionID,
+            title: "Not Now",
+            options: []
+        )
+        let offlineSetup = UNNotificationCategory(
+            identifier: Self.offlineSetupCategoryID,
+            actions: [setUp, notNow],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([filed, errors, cleanup, offlineSetup])
+    }
+
+    /// Delivered at most once ever, independent of the digest toggles: the
+    /// controller only calls this when notifications are already allowed.
+    func deliverOfflineSetupReminder(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.categoryIdentifier = Self.offlineSetupCategoryID
+        let request = UNNotificationRequest(
+            identifier: "intake.offlineModel.reminder",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 
     private func deliver(_ digest: NotificationDigest) {
@@ -165,10 +200,20 @@ extension NotificationDigestService: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let actionID = response.actionIdentifier
+        let categoryID = response.notification.request.content.categoryIdentifier
         let undoActivityID = (response.notification.request.content.userInfo[Self.undoActivityIDKey] as? String)
             .flatMap(UUID.init(uuidString:))
         defer { completionHandler() }
         Task { @MainActor [weak self] in
+            if categoryID == Self.offlineSetupCategoryID {
+                switch actionID {
+                case Self.offlineSetUpActionID, UNNotificationDefaultActionIdentifier:
+                    self?.model?.offlineModel.openSetup(step: .recommendation)
+                default:
+                    break
+                }
+                return
+            }
             switch actionID {
             case Self.undoActionID:
                 if let undoActivityID {
