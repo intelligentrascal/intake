@@ -99,7 +99,7 @@ struct OfflineModelSettingsSections: View {
         }
         HStack {
             changeSizeMenu(current: entry.tier)
-            Button("Delete Model…") { showsDeleteConfirmation = true }
+            Button("Delete Model") { showsDeleteConfirmation = true }
         }
         LabeledContent("About this model") {
             HStack(spacing: 6) {
