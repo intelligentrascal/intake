@@ -23,7 +23,7 @@
 2. Rules — editable filing rules, drag order (⌥⌘↑/↓), custom rules; on-device suggestions (shown only if there are any or dismissed ones to reset); delete (⌘⌫) and reset confirm
 3. Cleanup — threshold shown once: “Unused for [field] days” with a Stepper beside the field (rescan debounced ~0.5 s), include roots, multi-select decision queue with context menu (Quick Look, Reveal in Finder, File Away, Keep, Delete…); double-click/Space for Quick Look
 4. Activity — audit trail of ingest and cleanup (open the dedicated window from here or the menu); Open Activity button
-5. AI — **Content-aware rename** section first (off by default: toggle, naming provider picker On this Mac | OpenRouter, PDFs / Images toggles, Name template field (default `{date} {type} {organization} {subject}`) with a token caption, **Try on a File…** with inline result); **OpenRouter setup** disclosure (key, base URL, model) shown only when OpenRouter is enabled; folder suggestions toggle; **Intake spend** section with reset; account/cost info shows whenever OpenRouter enabled; privacy text and "file contents leave this Mac" line are provider-conditional
+5. AI — **Content-aware rename** section first (off by default: toggle, naming provider picker Offline model | Apple Intelligence | OpenRouter, PDFs / Images toggles, Name template field (default `{date} {type} {organization} {subject}`) with a token caption, **Try on a File…** with inline result); **Offline model** card (not downloaded / downloading / checking / ready / unsupported) and **Run the offline model** radio group once a model is installed; **OpenRouter setup** disclosure (key, base URL, model) shown only when OpenRouter is enabled; folder suggestions toggle; **Intake spend** section with reset; account/cost info shows whenever OpenRouter enabled; privacy text and "file contents leave this Mac" line are provider-conditional
 6. About — license, links; privacy text describes actual data flow based on selected naming provider
 7. Feedback — email field notes it's included in public GitHub issue
 
@@ -42,6 +42,14 @@ General → each watch folder's settings, between Automatic organizing and Wait 
 ### Automatic organizing
 
 General → each watch folder's settings, above Rename when download finishes. Native `Toggle`. Title **Automatic organizing**. Default **On**. Subtitle: “Files new downloads into folders. Off: files stay where they land.” Turning it off (or pausing the folder) stops filing only — the independent Rename toggle can still rename files in place.
+
+### Offline renaming (v1.4)
+
+- **Setup window** `Set Up Offline Renaming`: fixed-size, hidden title bar, centered; screens O1 welcome · O2 recommendation (one recommended size, **Choose another size…** radio list with **Recommended** and disabled-reason captions; Intel lists Lite (CPU) only) · O3 download (native `ProgressView`, live time remaining, Pause / Cancel Download) · O4 checking · O5 ready with **Use the offline model for renaming** (the only place that switch appears). Tier lines are verbatim from the manifest, e.g. “Best — 2.5 GB download · most accurate”. Model names appear only under **About this model**. No speed claims.
+- **Menu bar**: one top-level **Set Up Offline Renaming…** item, no submenu; while downloading it is replaced by a `Downloading model · 42%` row. The status icon draws a thin progress ring (dimmed when paused, dashed while checking) and a monochrome reminder dot — both drawn into the template image so they follow the menu bar's appearance.
+- **Upgrade sheet**: “New: rename files offline” with just **Set Up…** and **Not Now**.
+- **Cancel** always confirms: “Cancel the download? You can resume it from Settings within 24 hours.” (default **Keep Downloading**). Metered prompt defaults to **Wait for Wi-Fi**.
+- **Activity**: queued files show a `Waiting to rename` tag (orange; outlined under Increase Contrast) and a **Rename Now** button.
 
 ## Activity
 

@@ -172,7 +172,19 @@ struct ActivityListView: View {
     }
 
     private var list: some View {
-        List(selection: $selection) {
+        @Bindable var offline = model.offlineModel
+        return List(selection: $selection) {
+            // Files waiting for the offline model (SPEC §9.3, §9.5).
+            if let note = offline.overflowNote {
+                Label(note, systemImage: "info.circle")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            }
+            ForEach(waitingItems) { item in
+                WaitingToRenameRow(item: item)
+                    .listRowBackground(Color.clear)
+            }
             ForEach(model.filteredActivity) { entry in
                 ActivityRow(entry: entry)
                     .tag(entry.id)
@@ -201,6 +213,17 @@ struct ActivityListView: View {
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
+        .alert(OfflineModelController.blockedTitle, isPresented: $offline.renameNowBlockedPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(OfflineModelController.blockedMessage)
+        }
+    }
+
+    private var waitingItems: [QueuedOfflineRename] {
+        let items = model.offlineModel.queueItems
+        guard let filter = model.activityFolderFilter else { return items }
+        return items.filter { ($0.watchFolderID ?? filter) == filter }
     }
 
     @ViewBuilder
@@ -293,6 +316,10 @@ struct ActivityRow: View {
         let when = folder.map { "\($0) · \(date)" } ?? date
         switch entry.kind {
         case .renamed:
+            if entry.renameSource == .contentAwareAfterFiling {
+                let place = entry.destinationFolder.map { " · in \($0)" } ?? ""
+                return "Renamed after filing\(place) · \(when)"
+            }
             return "Renamed · \(when)"
         case .moved:
             let from = entry.sourceDomain.map { " · from \($0)" } ?? ""
@@ -322,5 +349,77 @@ private struct AtmosphereActivityChrome: View {
             Rectangle()
                 .fill(.background.opacity(0.28))
         }
+    }
+}
+
+/// A file waiting for the offline model: clock symbol, reason, a "Waiting to
+/// rename" tag (text, not color only) and Rename Now.
+struct WaitingToRenameRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.colorSchemeContrast) private var contrast
+    var item: QueuedOfflineRename
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "clock")
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(item.fileName)
+                        .font(.body)
+                    Text("Waiting to rename")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background {
+                            if contrast == .increased {
+                                RoundedRectangle(cornerRadius: 4).strokeBorder(.orange)
+                            } else {
+                                RoundedRectangle(cornerRadius: 4).fill(.orange.opacity(0.15))
+                            }
+                        }
+                }
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            if let folder = filedFolder {
+                Text(folder)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Button("Rename Now") {
+                model.offlineModel.renameNow([item.id])
+            }
+            .buttonStyle(.borderless)
+            .frame(minHeight: 44)
+            .disabled(model.offlineModel.isRenamingQueue)
+            .accessibilityLabel("Rename \(item.fileName) now")
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(item.fileName), waiting to rename, \(item.reason.text.lowercased())")
+    }
+
+    private var subtitle: String {
+        let date = item.enqueuedAt.formatted(date: .abbreviated, time: .shortened)
+        if let folder = filedFolder {
+            return "Moved to \(folder) · \(item.reason.text) · \(date)"
+        }
+        return "\(item.reason.text) · \(date)"
+    }
+
+    /// The top-level folder under the watch folder the file was filed into.
+    private var filedFolder: String? {
+        guard let id = item.watchFolderID, let controller = model.watchFolderController(id: id) else { return nil }
+        let root = controller.folder.standardizedFileURL.pathComponents
+        let parts = item.url.deletingLastPathComponent().standardizedFileURL.pathComponents
+        guard parts.count > root.count, Array(parts.prefix(root.count)) == root else { return nil }
+        return parts[root.count]
     }
 }

@@ -15,6 +15,7 @@ struct IntakeApp: App {
             ActivityWindowView()
                 .environment(model)
                 .background(ActivityWindowOpenBridge().environment(model))
+                .background(OfflineSetupOpenBridge().environment(model))
         }
         .defaultSize(width: 640, height: 520)
         .windowResizability(.contentMinSize)
@@ -45,8 +46,21 @@ struct IntakeApp: App {
                 .environment(model)
                 .background(ActivityWindowOpenBridge().environment(model))
                 .background(SettingsOpenBridge().environment(model))
+                .background(OfflineSetupOpenBridge().environment(model))
         }
         .menuBarExtraStyle(.menu)
+
+        // O1–O5 (SPEC §8.2). Opened by first run, the upgrade sheet, the menu,
+        // Settings and the reminder; never restored at launch.
+        Window("Set Up Offline Renaming", id: OfflineModelController.setupWindowID) {
+            OfflineSetupView()
+                .environment(model)
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.center)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
 
         Settings {
             SettingsRootView()

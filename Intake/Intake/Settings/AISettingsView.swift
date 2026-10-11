@@ -28,6 +28,7 @@ struct AISettingsView: View {
         @Bindable var model = model
         Form {
             contentAwareSection
+            OfflineModelSettingsSections()
             Section {
                 Toggle("Suggest folders with AI", isOn: $model.aiSuggestionsEnabled)
             } footer: {
@@ -287,7 +288,7 @@ struct AISettingsView: View {
         }
     }
 
-    /// Asks once before switching to OpenRouter; until confirmed the picker stays on On this Mac.
+    /// Asks once before switching to OpenRouter; until confirmed the picker keeps the current provider.
     private var providerBinding: Binding<ContentAwareRenameProvider> {
         Binding {
             model.contentAwareRename.provider
@@ -307,8 +308,10 @@ struct AISettingsView: View {
 
     private var contentAwareFooter: String {
         switch model.contentAwareRename.provider {
+        case .localModel:
+            return "Intake reads PDFs and images on this Mac with the offline model — file contents never leave this Mac. A name like “2026-09-14 Invoice Acme September Hosting” is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity."
         case .onDevice:
-            return "Off by default. Intake reads PDFs and images on this Mac with Apple’s on-device model — file contents never leave this Mac. A name like “2026-09-14 Invoice Acme September Hosting” is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity."
+            return "Off by default. Intake reads PDFs and images on this Mac with Apple Intelligence — file contents never leave this Mac. A name like “2026-09-14 Invoice Acme September Hosting” is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity."
         case .openRouter:
             return "Off by default. Intake reads PDFs and images on this Mac, then sends that extracted text to OpenRouter to propose a name. Requires OpenRouter enabled and an API key below. A name is used only when it passes Intake’s checks; otherwise the file keeps its Title Case name. Follows each folder’s Rename when download finishes, and can be undone from Activity."
         }

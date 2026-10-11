@@ -176,7 +176,7 @@ case "press":
     for w in windows() {
         if walk(w, { el, _ in
             let role = str(el, kAXRoleAttribute)
-            guard ["AXButton", "AXMenuItem", "AXRadioButton", "AXCheckBox", "AXPopUpButton", "AXMenuButton", "AXRow", "AXCell"].contains(role) else { return false }
+            guard ["AXButton", "AXMenuItem", "AXRadioButton", "AXCheckBox", "AXPopUpButton", "AXMenuButton", "AXRow", "AXCell", "AXDisclosureTriangle"].contains(role) else { return false }
             if str(el, kAXTitleAttribute) == target || str(el, kAXDescriptionAttribute) == target { found = el; return true }
             return false
         }) { break }
