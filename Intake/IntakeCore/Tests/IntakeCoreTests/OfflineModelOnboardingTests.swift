@@ -245,6 +245,15 @@ struct OfflineOnboardingScreenTests {
     }
 
     @Test
+    func selfTestFailureCopyMakesNoSpeedClaim() {
+        let message = OfflineOnboardingScreen.selfTestFailedMessage(smallerTierName: "Lite")
+        #expect(message == "This model couldn't finish its setup check on this Mac. Try Lite instead.")
+        for word in ["slow", "fast", "quick", "speed", "second"] {
+            #expect(!message.lowercased().contains(word))
+        }
+    }
+
+    @Test
     func selfTestFailureStepsTheRecommendationDown() {
         #expect(recommendation(unsupported: [.best]).recommendedTier == .standard)
         #expect(recommendation(unsupported: [.best, .standard]).recommendedTier == .lite)

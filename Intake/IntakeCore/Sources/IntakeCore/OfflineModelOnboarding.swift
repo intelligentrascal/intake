@@ -339,3 +339,12 @@ public enum OfflineOnboardingScreen: Equatable, Sendable {
         }
     }
 }
+
+extension OfflineOnboardingScreen {
+    /// O4 self-test / load failure copy when a smaller tier exists. Neutral
+    /// wording with no speed claim (Firstmate ruling, overrides SPEC §8 "too
+    /// slow"; HANDOFF: "The copy must not mention speed").
+    public static func selfTestFailedMessage(smallerTierName: String) -> String {
+        "This model couldn't finish its setup check on this Mac. Try \(smallerTierName) instead."
+    }
+}

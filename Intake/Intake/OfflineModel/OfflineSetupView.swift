@@ -126,7 +126,7 @@ struct OfflineSetupView: View {
             title("Verifying")
             if let smaller {
                 let entry = OfflineModelManifest.entry(for: smaller)
-                bodyText("This model is too slow on this Mac. Try \(offline.tierName(smaller)) instead. It's smaller.")
+                bodyText(OfflineOnboardingScreen.selfTestFailedMessage(smallerTierName: offline.tierName(smaller)))
                 Spacer()
                 footer { closeButton(prominent: false) } trailing: {
                     Button("Download \(offline.tierName(smaller)) (\(entry.sizeLabel))") {
