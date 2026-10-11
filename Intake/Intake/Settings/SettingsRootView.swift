@@ -1,4 +1,5 @@
 import AppKit
+import IntakeCore
 import SwiftUI
 
 struct SettingsRootView: View {
